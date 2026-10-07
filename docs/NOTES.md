@@ -448,6 +448,11 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 
 ## Texture guard (src/guard.c, `[Safety] TextureGuard`)
 
+* **Off by default since the owner asked for it to be taken out** (the game felt slightly laggy; whether the guard
+  is why is not measured - it is the only thing the crash fix added that runs for every 2D node every frame).  With
+  it off the two draw vtable slots are not patched at all.  What stays is the fix itself (`menu_shutdown` from the
+  gauge's destructor) and `l2d_live` in the modules' own "is it alive" tests.
+
 * CD2SeqCtrl's draw (1401aaea0, vtable 641dc0 slot 3 - every node of every layout and every standalone sequence
   goes through this slot; a layout's draw 1401a2bb0 is vtable 6418b8 slot 2) is entered through `guard_seq`.
   Only when the game is about to bind (timer group drawn [8f88020 + group], drawing on [8f8802c], objects > 0): the

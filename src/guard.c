@@ -35,7 +35,7 @@
 #define VT_SEQDATA  0x641f40u
 #define TIM2_MAGIC  0x324d4954u
 
-static int c_on = 1;
+static int c_on = 0;                   /* off unless asked for: the fix for the one known case is menu_shutdown() (menu.c) */
 static u64 (MSABI *o_seq_draw)(u8 *self, u64 a, u64 b, u64 c);
 static u64 (MSABI *o_lay_draw)(u8 *self, u64 a, u64 b, u64 c);
 static u8 *g_lay;                   /* the layout being drawn, NULL for a standalone sequence */
@@ -248,7 +248,7 @@ static u64 MSABI lay_draw_hook(u8 *self, u64 a, u64 b, u64 c) {
 /* ---- install ---- */
 extern char g_ini[MAX_PATH + 32];
 int guard_check(void) {
-    char b[16]; GetPrivateProfileStringA("Safety", "TextureGuard", "1", b, sizeof b, g_ini); c_on = atoi(b);
+    char b[16]; GetPrivateProfileStringA("Safety", "TextureGuard", "0", b, sizeof b, g_ini); c_on = atoi(b);
     if (!c_on) return 1;
     if (G(u64, VT_SEQ_DRAW) != (u64)(g_base + FN_SEQ_DRAW) || G(u64, VT_LAY_DRAW) != (u64)(g_base + FN_LAY_DRAW)) {
         LOG("2D draw vtable slots do not match"); return 0;

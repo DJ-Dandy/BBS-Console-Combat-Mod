@@ -361,6 +361,17 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   moves at the pad's repeat rate, as the Magic and Items lists.  `LinkCursorTime` > 0 keeps the animation with
   that time (10 = the game's).  Test: in `t_menu`, on the game's own functions.
 
+## Shortcuts: a face button counts where it went down (shortcut.c pad_frame)
+
+* Reported: circle held, then L1 -> circle's shortcut was used.  The game's "pressed this frame" word is
+  `~history[last frame] & held` [1400ed040], and the mod wipes the face buttons from that history entry while the
+  list is shown (so nothing buffered sees them).  From the second frame of the list a held face button therefore
+  read as pressed anew every frame: a button held before L1 fired at once, and a held one repeated.
+* Presses are now counted by the mod itself from the raw held word, frame to frame (`g_face_prev`), list shown or
+  not.  And the other direction, same cause: a face button still down when the list goes away stays hidden from the
+  game until it is let go (`g_face_block`), or the game would take it for a fresh press and attack.
+* Test: in `t_shortcut`.
+
 ## The lists' own colours (menu.c tint_node, row_colours, hdr_frame; `ListColors`)
 
 * Asked for: Magic blue, Items green, D-Link "the D-Link blue", and none of them changing with battle.

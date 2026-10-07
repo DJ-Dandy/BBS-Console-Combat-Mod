@@ -1081,6 +1081,31 @@ static void t_shortcut(void) {
     *(u64*)(cmd + 0x80) = 0;
     pad(PAD_L1, 0); pad(0, 0);
     CHECK(!test_sc_tap(), "letting L1 go after a shortcut is not a tap");
+    /* A button counts where it went down.  The second argument is the game's own "pressed this frame", which
+       says "pressed" every frame for a held face button once its history entry has been wiped. */
+    { const u32 CIR = 0x2000;
+      pad(CIR, CIR); CHECK(!sc_held() && (G(u32, 0x8f64930) & CIR) && (G(u32, 0x8f64934) & CIR), "circle without L1: the game's");
+      pad(CIR, 0);
+      pad(PAD_L1 | CIR, PAD_L1);
+      CHECK(sc_held() && sc_want() < 0 && !(G(u32, 0x8f64930) & CIR), "circle held, then L1: the list comes up, no shortcut is used");
+      pad(PAD_L1 | CIR, CIR); pad(PAD_L1 | CIR, CIR);
+      CHECK(sc_want() < 0, "still held: still nothing, whatever the game's count says");
+      test_menu_step(cmd);
+      CHECK(*(u16*)(cmd + 0x80) == 0, "and nothing was queued");
+      pad(PAD_L1, 0); pad(PAD_L1 | CIR, CIR);
+      CHECK(sc_want() == 0, "let go and pressed with the list up: circle's shortcut (row %d)", sc_want());
+      sc_done();
+      pad(PAD_L1 | CIR, CIR); pad(PAD_L1 | CIR, CIR);
+      CHECK(sc_want() < 0, "holding it does not use the shortcut again");
+      /* L1 let go first: the button is not handed to the game as a new press */
+      pad(CIR, CIR);
+      CHECK(!sc_held() && !(G(u32, 0x8f64930) & CIR) && !(G(u32, 0x8f64934) & CIR) && !(G(u32, 0x8f6493c) & CIR), "L1 let go, circle still down: hidden from the game (%x %x)", G(u32, 0x8f64930), G(u32, 0x8f64934));
+      CHECK(test_confirm(mgr + 0x58, cmd) == 0, "the game's confirm test sees nothing");
+      pad(CIR | PAD_TRI, CIR | PAD_TRI);
+      CHECK(!(G(u32, 0x8f64930) & CIR) && (G(u32, 0x8f64930) & PAD_TRI) && (G(u32, 0x8f64934) & PAD_TRI), "another button pressed meanwhile is the game's");
+      pad(0, 0); pad(CIR, CIR);
+      CHECK((G(u32, 0x8f64930) & CIR) && (G(u32, 0x8f64934) & CIR), "let go and pressed again: the game's");
+      pad(0, 0); *(u64*)(cmd + 0x80) = 0; }
     /* a tap of L1 (camera behind the character / next target) is reported on release */
     pad(PAD_L1, PAD_L1); CHECK(!test_sc_tap(), "nothing on the press");
     pad(PAD_L1, 0); pad(PAD_L1, 0); pad(0, 0); CHECK(test_sc_tap() == 1, "tap on release");

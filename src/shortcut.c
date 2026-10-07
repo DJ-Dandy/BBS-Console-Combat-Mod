@@ -100,9 +100,25 @@ static int can_show(void) {
     u8 *pad = mgr + 0x58;
     return (*(u32*)(pad + 0xa0) & 1) && *(float*)(pad + 0x54) <= 0.0f;  /* pad enabled, not locked */
 }
+/* A face button counts where it went down.  The game works out "pressed this frame" from last frame's entry of its
+   pad history [1400ed040: ~history & held], and the face buttons are wiped from that entry while the list is
+   shown - so to the game's own count a button that is simply being held looks pressed anew every frame.  Reading
+   that count here made a button held BEFORE L1 use its shortcut the moment the list came up (and a held button
+   repeat it).  Presses are counted here instead, from the buttons as the pad gives them, frame to frame.
+   The other way round: a button still down when the list goes away would look freshly pressed to the game for the
+   same reason, and attack; it stays hidden from the game until it is let go. */
+static u32 g_face_prev;                 /* face buttons down last frame */
+static u32 g_face_block;                /* down while the list was shown and not let go since: not the game's */
+static void hide_face(u32 m) {
+    PAD_HELD &= ~m; PAD_EDGE &= ~m; PAD_CHG &= ~m; PAD_REP &= ~m;
+    u32 i = G(u32, 0x8f64954) & 7;                                     /* this frame's entries of the pad history */
+    G(u32, 0x8f64958 + i * 4) &= ~m; G(u32, 0x8f64978 + i * 4) &= ~m;
+}
 static void pad_frame(void) {
     g_tap = 0;
     u32 held = PAD_OFF ? 0 : PAD_HELD;
+    u32 face = PAD_HELD & B_FACE, press = face & ~g_face_prev;
+    g_face_prev = face;
     if (held & B_L1) {
         if (g_l1 < 100000) g_l1++;
         if (held & B_R1) g_l1_used = 1;
@@ -111,14 +127,17 @@ static void pad_frame(void) {
         g_l1 = 0; g_l1_used = 0;
     }
     g_active = c_on && (held & B_L1) && !(held & B_R1) && can_show();
-    if (!g_active) { sc_done(); return; }
-    u32 press = held & PAD_EDGE & B_FACE;
-    if (held & B_FACE) g_l1_used = 1;
+    if (!g_active) {
+        sc_done();
+        g_face_block &= face;                                           /* let go: the game's again */
+        if (g_face_block) hide_face(g_face_block);
+        return;
+    }
+    g_face_block = face;
+    if (face) g_l1_used = 1;
     if (g_want_t > 0 && --g_want_t == 0) g_want = -1;
     for (int r = 0; r < SC_ROWS; r++) if (press & row_bit[r]) { g_want = r; g_want_t = c_buffer; break; }
-    PAD_HELD &= ~B_FACE; PAD_EDGE &= ~B_FACE; PAD_CHG &= ~B_FACE; PAD_REP &= ~B_FACE;
-    u32 i = G(u32, 0x8f64954) & 7;                                     /* this frame's entries of the pad history */
-    G(u32, 0x8f64958 + i * 4) &= ~B_FACE; G(u32, 0x8f64978 + i * 4) &= ~B_FACE;
+    hide_face(B_FACE);
 }
 static void MSABI pad_hook(float dt) {
     FN(void, 0xed040, float)(dt);

@@ -377,10 +377,11 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 ## MP Haste (mp.c charge_speed, haste_texts; `[MP] ChargeSeconds`, `MPHasteBonus`, `MPHasteRename`)
 
 * KH2 (its 00battle.bin and the wiki): the MP charge takes 50 s / (1 + bonus); MP Haste 0.25, Hastera 0.5,
-  Hastega 1.0 (0.75 in Final Mix).  Here: `ChargeSeconds` 50 (was 20), and the game's own Magic Haste - ability
+  Hastega 1.0 (0.75 in Final Mix).  Here: `ChargeSeconds` 25 (20 at first, 50 for one build, then 25 on request),
+  and the game's own Magic Haste - ability
   0x1d0, which can be installed several times; `140221900(player, id)` gives the number in effect, the byte
-  `player + 0x4a3 + slot`, slot = command table +7 (13) - adds `MPHasteBonus` 0.1 a copy: 50 / 45.5 / 41.7 / 38.5 /
-  35.7 / 33.3 s for 0..5 copies.  Attack Haste (0x1cf, slot 12) keeps the 0.05 a copy both abilities had before
+  `player + 0x4a3 + slot`, slot = command table +7 (13) - adds `MPHasteBonus` 0.05 a copy (0.1 in that one build): 25 / 23.8 /
+  22.7 / 21.7 / 20.8 / 20 s for 0..5 copies.  Attack Haste (0x1cf, slot 12) keeps the 0.05 a copy both abilities had before
   (`AttackHasteBonus`); nobody asked for that one to change.
 * The name.  Command and ability names are file `message/<lang>/system/CT00500.ctd` (first id 0xfa0000, 498
   messages, message i = command i).  A message file: `@CTD`, +8 first id, +0xc u16 layouts, +0xe u16 messages,

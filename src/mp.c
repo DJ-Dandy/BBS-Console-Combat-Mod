@@ -41,8 +41,8 @@ static float c_max_per_slot = 10.0f;   /* extra MP per command deck slot the cha
 static float c_max_per_level = 0.0f;   /* extra MP per level above 1 */
 static float c_cost_scale = 1.0f;      /* MP cost = command's reload seconds x this */
 static int   c_cure_all = 1;           /* Cure/Cura/Curaga use all remaining MP (KH2 rule) */
-static float c_charge_seconds = 50.0f; /* MP charge: seconds to recharge from empty (KH2's 50) */
-static float c_haste_bonus = 0.1f;     /* ... divided by 1 + this for every Magic Haste ("MP Haste") installed */
+static float c_charge_seconds = 25.0f; /* MP charge: seconds to recharge from empty (KH2: 50) */
+static float c_haste_bonus = 0.05f;    /* ... divided by 1 + this for every Magic Haste ("MP Haste") installed */
 static float c_atk_haste_bonus = 0.05f;/* ... and this for every Attack Haste */
 static int   c_haste_rename = 1;       /* Magic Haste is shown as MP Haste, with a description of what it does here */
 static char  c_haste_name[48], c_haste_help[256];
@@ -618,9 +618,10 @@ static int at_save_point(u8 *cmd) {
     return k && k[0] == 0x12e;
 }
 /* ---------------- MP Haste ----------------
-   KH2: the MP charge takes 50 s / (1 + bonus), MP Haste being 0.25 of bonus.  Here the game's own Magic Haste
-   (ability 0x1d0, which can be installed several times; 140221900 gives the number in effect) is that ability:
-   0.1 a copy.  Attack Haste (0x1cf), which has nothing of its own left to shorten, keeps the 0.05 a copy it had.
+   KH2: the MP charge takes 50 s / (1 + bonus), MP Haste being 0.25 of bonus.  Here it is 25 s / (1 + bonus) and the
+   game's own Magic Haste (ability 0x1d0, which can be installed several times; 140221900 gives the number in
+   effect) is that ability: 0.05 a copy.  Attack Haste (0x1cf), which has nothing of its own left to shorten,
+   keeps the 0.05 a copy it had.
 
    Its texts.  A message file (CRsrcCTD) is: +0xe u16 number of messages, +0x10 offset of the message records
    (u32 id, u32 text offset, u32 layout), texts as plain bytes.  Once a file is in memory the game calls slot 1 of

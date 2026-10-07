@@ -361,6 +361,13 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   moves at the pad's repeat rate, as the Magic and Items lists.  `LinkCursorTime` > 0 keeps the animation with
   that time (10 = the game's).  Test: in `t_menu`, on the game's own functions.
 
+## D-Links during MP charge (`DLinkDuringCharge`)
+
+* The first design refused a new D-Link while the bar recharged, in three places: the menu's D-Link entry
+  (entry_usable), the game's "open the D-Link list" [2388a0] and "confirm an entry" [205ee0].  Reported as a bug: out
+  of MP, no D-Link.  A D-Link costs no MP, so all three now go through `mp_blocks_link()`, which is only true with
+  DLinkDuringCharge = 0.  The D-Link deck's commands still wait for the charge (use_hook), items do not.
+
 ## MP cost of the D-Link-only commands (mp.c base_cost; `DLinkCostByClass`)
 
 * Reported by players: D-Link heals for 5 MP.  The fourteen commands only D-Link decks have (ids e4..f1, category

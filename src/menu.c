@@ -210,7 +210,7 @@ static int entry_usable(u8 *cmd, int e) {
     switch (e) {
     case E_MAGIC: return !mp_in_burn() && !deck_sealed(cmd) && list_count(cmd, 0, -1, NULL) > 0;
     case E_ITEM:  return !deck_sealed(cmd) && list_count(cmd, 1, -1, NULL) > 0;
-    case E_LINK:  return cmd[0x350] > 0 && !(GFLAGS & 0x200000) && !deck_sealed(cmd) && (link_active(cmd) || !mp_in_burn());
+    case E_LINK:  return cmd[0x350] > 0 && !(GFLAGS & 0x200000) && !deck_sealed(cmd) && (link_active(cmd) || !mp_blocks_link());
     }
     return 1;
 }

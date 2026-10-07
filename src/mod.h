@@ -2,6 +2,7 @@
 #include "core.h"
 /* mp.c */
 int   mp_in_burn(void);
+int   mp_blocks_link(void);                    /* MP charge keeps a new D-Link from being started (DLinkDuringCharge = 0 only) */
 float mp_burn_pct(void);
 u8   *mp_use(u8 *plate);            /* the deck "use" gate: COMMAND* or NULL; charges MP */
 float mp_cost(int id);

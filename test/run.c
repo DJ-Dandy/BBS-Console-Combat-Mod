@@ -152,8 +152,12 @@ static void t_use(void) {
     CHECK(!(FLG(3) & 2) && PCT(3) == 100, "item plate stays usable");
     CHECK(test_use(plate[1]) == NULL && test_use(plate[2]) == NULL, "no commands in burn");
     CHECK(test_use(plate[3]) != NULL, "items work in burn"); frame();
-    /* D-Link refused in burn */
-    CHECK(FN(int, 0x2388a0, u8*)(cmd) == 0, "D-Link list refused in burn");
+    /* a D-Link can be started during MP charge; with DLinkDuringCharge = 0 it is refused, as it was at first */
+    { extern int mp_blocks_link(void); extern int *test_link_in_burn(void);
+      CHECK(*test_link_in_burn() == 1 && mp_blocks_link() == 0, "MP charge does not stand in a D-Link's way");
+      *test_link_in_burn() = 0;
+      CHECK(mp_blocks_link() == 1 && FN(int, 0x2388a0, u8*)(cmd) == 0, "DLinkDuringCharge = 0: D-Link list refused in burn");
+      *test_link_in_burn() = 1; }
     /* recharge: 20 s x 60 ticks */
     for (int i = 0; i < 600; i++) frame();
     printf("  after 600 ticks: charge %.1f plate pct %.1f\n", *test_charge(), PCT(1));

@@ -382,7 +382,9 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   0x1d0, which can be installed several times; `140221900(player, id)` gives the number in effect, the byte
   `player + 0x4a3 + slot`, slot = command table +7 (13) - adds `MPHasteBonus` 0.05 a copy (0.1 in that one build): 25 / 23.8 /
   22.7 / 21.7 / 20.8 / 20 s for 0..5 copies.  Attack Haste (0x1cf, slot 12) keeps the 0.05 a copy both abilities had before
-  (`AttackHasteBonus`); nobody asked for that one to change.
+  (`AttackHasteBonus`).  The two then do exactly the same, so on request Attack Haste is shown as MP Haste too:
+  name message 0xfa01cf, description 0x32020c ("Shortens the reload time for all attack commands ...", 126
+  bytes), same treatment as below.  An ability whose bonus is set to 0 keeps the game's texts.
 * The name.  Command and ability names are file `message/<lang>/system/CT00500.ctd` (first id 0xfa0000, 498
   messages, message i = command i).  A message file: `@CTD`, +8 first id, +0xc u16 layouts, +0xe u16 messages,
   +0x10 offset of the message records (u32 id, u32 text offset, u32 layout), +0x14 / +0x18 the other tables; texts

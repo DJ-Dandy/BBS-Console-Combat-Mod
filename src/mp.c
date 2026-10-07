@@ -44,8 +44,8 @@ static int   c_cure_all = 1;           /* Cure/Cura/Curaga use all remaining MP 
 static float c_charge_seconds = 25.0f; /* MP charge: seconds to recharge from empty (KH2: 50) */
 static float c_haste_bonus = 0.05f;    /* ... divided by 1 + this for every Magic Haste ("MP Haste") installed */
 static float c_atk_haste_bonus = 0.05f;/* ... and this for every Attack Haste */
-static int   c_haste_rename = 1;       /* Magic Haste is shown as MP Haste, with a description of what it does here */
-static char  c_haste_name[48], c_haste_help[256];
+static int   c_haste_rename = 1;       /* both are shown as MP Haste, with a description of what they do here */
+static char  c_haste_name[48], c_haste_help[2][256];    /* description: [0] Magic Haste's, [1] Attack Haste's */
 static int   c_haste_name_set, c_haste_help_set;   /* given in the ini: used whatever the game's language */
 static int   c_cursor_advance = 0;     /* 1 = cursor moves to the next command after a use (vanilla) */
 static int   c_ether = 1;              /* Ether-type items restore MP */
@@ -115,11 +115,12 @@ static void load_ini(void) {
     c_atk_haste_bonus = ini_f("MP", "AttackHasteBonus", c_atk_haste_bonus);
     c_haste_rename = (int)ini_f("MP", "MPHasteRename", (float)c_haste_rename);
     c_haste_name_set = ini_s("MP", "MPHasteName", c_haste_name, sizeof c_haste_name);
-    c_haste_help_set = ini_s("MP", "MPHasteHelp", c_haste_help, sizeof c_haste_help);
+    c_haste_help_set = ini_s("MP", "MPHasteHelp", c_haste_help[0], sizeof c_haste_help[0]);
     if (!c_haste_name_set) snprintf(c_haste_name, sizeof c_haste_name, "MP Haste");
-    if (!c_haste_help_set) {
-        char pc[16]; snprintf(pc, sizeof pc, "%g", c_haste_bonus * 100.0f);
-        snprintf(c_haste_help, sizeof c_haste_help, "Makes MP recharge %s%% faster once you have run out.\n"
+    if (c_haste_help_set) memcpy(c_haste_help[1], c_haste_help[0], sizeof c_haste_help[1]);
+    else for (int i = 0; i < 2; i++) {
+        char pc[16]; snprintf(pc, sizeof pc, "%g", (i ? c_atk_haste_bonus : c_haste_bonus) * 100.0f);
+        snprintf(c_haste_help[i], sizeof c_haste_help[i], "Makes MP recharge %s%% faster once you have run out.\n"
                  "Multi-install the ability for an even quicker recharge.", pc);
     }
     c_cursor_advance = (int)ini_f("MP", "CursorAdvance", (float)c_cursor_advance);
@@ -619,18 +620,19 @@ static int at_save_point(u8 *cmd) {
 }
 /* ---------------- MP Haste ----------------
    KH2: the MP charge takes 50 s / (1 + bonus), MP Haste being 0.25 of bonus.  Here it is 25 s / (1 + bonus) and the
-   game's own Magic Haste (ability 0x1d0, which can be installed several times; 140221900 gives the number in
-   effect) is that ability: 0.05 a copy.  Attack Haste (0x1cf), which has nothing of its own left to shorten,
-   keeps the 0.05 a copy it had.
+   game's own Magic Haste and Attack Haste (abilities 0x1d0 and 0x1cf, which can be installed several times;
+   140221900 gives the number in effect) are that ability: 0.05 a copy each.  Neither has anything of its own left
+   to shorten, they do the same thing, and so both are shown under the one name.
 
    Its texts.  A message file (CRsrcCTD) is: +0xe u16 number of messages, +0x10 offset of the message records
    (u32 id, u32 text offset, u32 layout), texts as plain bytes.  Once a file is in memory the game calls slot 1 of
    the object's vtable (140112ed0: +0x90 file, +0x98 records, +0xb0 first id), which for the command names (file
    0xfa0000) also fills the name pointers of the command table (140814908 + id * 0x18) - the only way a name is
    read.  An ability's description is message 0x32003d + id of file 0x320000 [14041d880].  That slot is hooked and
-   the two texts are rewritten in the file as loaded, so every reader gets them: the name there if it fits, else
-   through the name pointer; the description cut to the room the game's has (125 bytes in English).  Only the
-   English texts are replaced, unless the ini gives texts of its own. */
+   the texts are rewritten in the file as loaded, so every reader gets them: the name there if it fits, else
+   through the name pointer; the description cut to the room the game's has (125 / 126 bytes in English).  Only
+   the English texts are replaced, unless the ini gives texts of its own.  An ability whose bonus is set to 0 keeps
+   the game's texts. */
 #define VT_CTD_READY 0x637910u          /* CRsrcCTD vtable slot 1 */
 #define FN_CTD_READY 0x112ed0u
 #define AB_ATTACK_HASTE 0x1cf
@@ -661,20 +663,27 @@ static int can_write(const char *p, size_t n) {
 #endif
 }
 static void haste_texts(u8 *self) {
+    static const struct { u32 id; const char *name, *help; } ab[2] = {
+        { AB_MAGIC_HASTE,  "Magic Haste",  "Shortens the reload time for all magic commands" },
+        { AB_ATTACK_HASTE, "Attack Haste", "Shortens the reload time for all attack commands" } };
     u32 first = *(u32*)(self + 0xb0);
-    if (first == MSG_NAMES) {
-        char *t = ctd_text(self, MSG_NAMES + AB_MAGIC_HASTE);
-        if (!t || !(c_haste_name_set || !strcmp(t, "Magic Haste"))) return;
-        if (strlen(c_haste_name) <= strlen(t) && can_write(t, strlen(t) + 1)) strcpy(t, c_haste_name);
-        else G(const char*, 0x814908 + AB_MAGIC_HASTE * 0x18) = c_haste_name;
-        if (g_debug) LOG("mp: Magic Haste is named \"%s\"", c_haste_name);
-    } else if (first == DESC_MSG) {
-        char *t = ctd_text(self, MSG_ABILITY_HELP + AB_MAGIC_HASTE);
-        if (!t || !(c_haste_help_set || !strncmp(t, "Shortens the reload time for all magic", 38))) return;
-        if (!can_write(t, strlen(t) + 1)) { LOG("mp: the description of MP Haste cannot be written"); return; }
-        size_t room = strlen(t), n = strlen(c_haste_help);
-        if (n > room) { n = room; LOG("mp: the description of MP Haste is cut to %u bytes", (unsigned)room); }
-        memcpy(t, c_haste_help, n); t[n] = 0;
+    if (first != MSG_NAMES && first != DESC_MSG) return;
+    for (int i = 0; i < 2; i++) {
+        if (!((i ? c_atk_haste_bonus : c_haste_bonus) > 0)) continue;
+        if (first == MSG_NAMES) {
+            char *t = ctd_text(self, MSG_NAMES + ab[i].id);
+            if (!t || !(c_haste_name_set || !strcmp(t, ab[i].name))) continue;
+            if (strlen(c_haste_name) <= strlen(t) && can_write(t, strlen(t) + 1)) strcpy(t, c_haste_name);
+            else G(const char*, 0x814908 + ab[i].id * 0x18) = c_haste_name;
+            if (g_debug) LOG("mp: %s is named \"%s\"", ab[i].name, c_haste_name);
+        } else {
+            char *t = ctd_text(self, MSG_ABILITY_HELP + ab[i].id);
+            if (!t || !(c_haste_help_set || !strncmp(t, ab[i].help, strlen(ab[i].help)))) continue;
+            if (!can_write(t, strlen(t) + 1)) { LOG("mp: the description of %s cannot be written", ab[i].name); continue; }
+            size_t room = strlen(t), n = strlen(c_haste_help[i]);
+            if (n > room) { n = room; LOG("mp: the description of %s is cut to %u bytes", ab[i].name, (unsigned)room); }
+            memcpy(t, c_haste_help[i], n); t[n] = 0;
+        }
     }
 }
 static u64 (MSABI *o_ctd_ready)(u8 *self, u64 a, u64 b, u64 c);
@@ -830,7 +839,7 @@ int *test_bar(void) { return &g_bar; }
 void test_tick(u8 *g) { tick(g); }
 float *test_charge_seconds(void) { return &c_charge_seconds; }
 float *test_haste_bonus(int atk) { return atk ? &c_atk_haste_bonus : &c_haste_bonus; }
-const char *test_haste_help(void) { return c_haste_help; }
+const char *test_haste_help(int atk) { return c_haste_help[atk ? 1 : 0]; }
 void test_gauge_update(u8 *g) { gauge_update_hook(g); }
 u8 *test_use(u8 *P) { return use_hook(P); }
 #endif

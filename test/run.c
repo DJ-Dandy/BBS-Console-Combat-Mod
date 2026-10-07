@@ -274,7 +274,7 @@ static void t_ether(void) {
 }
 /* MP Haste: the MP charge takes 25 s / (1 + 0.05 x Magic Haste installed); the ability's name and description
    (needs BBS_MSG_NAMES / BBS_MSG_HELP = message/en/system/CT00500.ctd / CT00100.ctd for the texts) */
-extern float *test_charge_seconds(void), *test_haste_bonus(int atk); extern const char *test_haste_help(void);
+extern float *test_charge_seconds(void), *test_haste_bonus(int atk); extern const char *test_haste_help(int atk);
 extern int *test_fresh(void);
 static u8 *slurp(const char *fn, size_t *n);
 static int charge_ticks(int magic, int attack) {
@@ -324,19 +324,30 @@ static void t_haste(void) {
     #define NAME(id) G(const char*, 0x814908 + (u32)(id) * 0x18)
     CHECK(NAME(0x1d0) && !strcmp(NAME(0x1d0), "MP Haste"), "name: %s", NAME(0x1d0) ? NAME(0x1d0) : "-");
     CHECK(NAME(0x1d0) == was, "written in the file itself");
-    CHECK(!strcmp(NAME(0x1cf), "Attack Haste") && !strcmp(NAME(0x1d1), "Combo F Boost") && !strcmp(NAME(0x92), "Cure") && !strcmp(NAME(0x1f1), ctd_find(names, 0xfa01f1)),
-          "the names around it are the game's (%s / %s)", NAME(0x1cf), NAME(0x1d1));
+    CHECK(NAME(0x1cf) && !strcmp(NAME(0x1cf), "MP Haste") && NAME(0x1cf) != NAME(0x1d0), "Attack Haste has the same name: %s", NAME(0x1cf) ? NAME(0x1cf) : "-");
+    CHECK(!strcmp(NAME(0x1ce), ctd_find(names, 0xfa01ce)) && !strcmp(NAME(0x1d1), "Combo F Boost") && !strcmp(NAME(0x92), "Cure") && !strcmp(NAME(0x1f1), ctd_find(names, 0xfa01f1)),
+          "the names around them are the game's (%s / %s)", NAME(0x1ce), NAME(0x1d1));
     ready(o1);
-    CHECK(!strcmp(NAME(0x1d0), "MP Haste"), "a second call changes nothing");
-    const char *h0 = ctd_find(help, 0x32020d), *ha = ctd_find(help, 0x32020c), *hb = ctd_find(help, 0x32020e);
+    CHECK(!strcmp(NAME(0x1d0), "MP Haste") && !strcmp(NAME(0x1cf), "MP Haste"), "a second call changes nothing");
+    const char *h0 = ctd_find(help, 0x32020d), *h1 = ctd_find(help, 0x32020c), *ha = ctd_find(help, 0x32020b), *hb = ctd_find(help, 0x32020e);
     CHECK(h0 && !strncmp(h0, "Shortens the reload time for all magic commands", 47), "the game's description");
-    size_t room = h0 ? strlen(h0) : 0; char *a0 = strdup(ha), *b0 = strdup(hb);
+    CHECK(h1 && !strncmp(h1, "Shortens the reload time for all attack commands", 48), "the game's description of Attack Haste");
+    size_t room = h0 ? strlen(h0) : 0, room1 = h1 ? strlen(h1) : 0; char *a0 = strdup(ha), *b0 = strdup(hb);
     u8 *o2 = calloc(1, 0x100); *(u8**)(o2 + 0x70) = help; ready(o2);
     printf("  description: %s\n", h0);
-    CHECK(!strcmp(h0, test_haste_help()) && strlen(h0) <= room && strstr(h0, "5% faster"), "description replaced (%u of %u bytes)", (unsigned)strlen(h0), (unsigned)room);
+    CHECK(!strcmp(h0, test_haste_help(0)) && strlen(h0) <= room && strstr(h0, "5% faster"), "description replaced (%u of %u bytes)", (unsigned)strlen(h0), (unsigned)room);
+    CHECK(!strcmp(h1, test_haste_help(1)) && strlen(h1) <= room1 && !strcmp(h1, h0), "Attack Haste: the same description (%u of %u bytes)", (unsigned)strlen(h1), (unsigned)room1);
     { int w = 0, m = 0, lines = 1; for (const char *c = h0; *c; c++) { if (*c == '\n') { lines++; w = 0; } else if (++w > m) m = w; }
       CHECK(lines <= 3 && m <= 58, "it fits the help box: %d lines, longest %d", lines, m); }
-    CHECK(!strcmp(ha, a0) && !strcmp(hb, b0), "the descriptions around it are the game's");
+    CHECK(!strcmp(ha, a0) && !strcmp(hb, b0), "the descriptions around them are the game's");
+    /* an ability whose bonus is 0 keeps the game's texts */
+    { size_t n2, h2; u8 *nm2 = slurp(nf, &n2), *hp2 = slurp(hf, &h2);
+      *test_haste_bonus(1) = 0;
+      u8 *o3 = calloc(1, 0x100); *(u8**)(o3 + 0x70) = nm2; ready(o3);
+      u8 *o4 = calloc(1, 0x100); *(u8**)(o4 + 0x70) = hp2; ready(o4);
+      CHECK(!strcmp(NAME(0x1cf), "Attack Haste") && !strcmp(NAME(0x1d0), "MP Haste"), "AttackHasteBonus = 0: it stays Attack Haste (%s)", NAME(0x1cf));
+      CHECK(!strncmp(ctd_find(hp2, 0x32020c), "Shortens the reload time for all attack", 39) && !strncmp(ctd_find(hp2, 0x32020d), "Makes MP", 8), "... with its own description");
+      *test_haste_bonus(1) = 0.05f; }
     CHECK(*(u32*)(o2 + 0xb0) == 0x320000 && *(u32*)(o1 + 0xb0) == 0xfa0000, "the game's own set-up ran");
     /* the game's lookup of an ability's description gives the new text: 1401b3d80 walks the loaded files */
     printf("t_haste done\n");

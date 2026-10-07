@@ -45,6 +45,7 @@ static float c_charge_seconds = 20.0f; /* MP burn: seconds to recharge from empt
 static int   c_cursor_advance = 0;     /* 1 = cursor moves to the next command after a use (vanilla) */
 static int   c_ether = 1;              /* Ether-type items restore MP */
 static int   c_tiered = 1;             /* magic costs spread out by tier (see base_cost) */
+static int   c_link_refill = 1;        /* starting a D-Link fills the MP bar and ends an MP charge, as a Drive Form does in KH2 */
 static int   c_link_in_burn = 1;       /* a D-Link can be started during MP charge (0 = not until the bar is back) */
 static int   c_dlink_cost = 1;         /* the commands only D-Link decks have cost by their class, their two cures as Cure (see base_cost) */
 static float c_save_seconds = 1.0f;    /* standing on a save point: seconds for a full bar / a full recharge (0 = off) */
@@ -99,6 +100,7 @@ static void load_ini(void) {
     c_tiered = (int)ini_f("MP", "TieredMagic", (float)c_tiered);
     c_dlink_cost = (int)ini_f("MP", "DLinkCostByClass", (float)c_dlink_cost);
     c_link_in_burn = (int)ini_f("MP", "DLinkDuringCharge", (float)c_link_in_burn);
+    c_link_refill = (int)ini_f("MP", "DLinkRefillsMP", (float)c_link_refill);
     c_floor = (int)ini_f("Combat", "DamageFloor", (float)c_floor);
     c_desc_cost = (int)ini_f("Menu", "DescriptionCost", (float)c_desc_cost);
     for (int id = 0x5b; id < 0x1a0; id++) {             /* the deck commands */
@@ -329,13 +331,24 @@ static int MSABI dlink_open_hook(u8 *cmd) {
     }
     return o_dlink_open(cmd);
 }
-/* 205ee0: confirm an entry of the D-Link list (returns its COMMAND*, 0 = refused) */
+/* 205ee0: confirm an entry of the D-Link list (returns its COMMAND*, 0 = refused: the entry is used up or is not a
+   D-Link).  This is the player starting a D-Link, and the one place that is: a link carried into the next room
+   does not come through here.  Starting one fills the MP bar and ends an MP charge, as a Drive Form does in KH2
+   (ini DLinkRefillsMP); not when a link is already active, where the list is only there to end it. */
 static u8 *(MSABI *o_dlink_pick)(u8 *P);
 static u8 *MSABI dlink_pick_hook(u8 *P) {
     u8 *cmd = CMD;
-    if (mp_blocks_link() && cmd && !(*(u32*)(cmd + 0x64) & 0x80)) return NULL;
-    return o_dlink_pick(P);
+    int linked = cmd && (*(u32*)(cmd + 0x64) & 0x80);
+    if (mp_blocks_link() && cmd && !linked) return NULL;
+    u8 *c = o_dlink_pick(P);
+    if (c && cmd && !linked && c_link_refill) {
+        if (g_burn) burn_end(); else g_mp = g_mpmax;
+        if (g_debug) LOG("mp: D-Link started, MP %.0f / %.0f", g_mp, g_mpmax);
+    }
+    return c;
 }
+u8 *test_dlink_pick(u8 *P) { return dlink_pick_hook(P); }
+int *test_link_refill(void) { return &c_link_refill; }
 
 /* 2624e0: an item takes effect. Items that restore Focus (Ether, Mega-Ether, Elixir, Megalixir) restore MP too. */
 static void (MSABI *o_item_effect)(u8 *pl);

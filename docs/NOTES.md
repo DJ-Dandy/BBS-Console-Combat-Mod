@@ -368,6 +368,12 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   of MP, no D-Link.  A D-Link costs no MP, so all three now go through `mp_blocks_link()`, which is only true with
   DLinkDuringCharge = 0.  The D-Link deck's commands still wait for the charge (use_hook), items do not.
 
+* `DLinkRefillsMP` (asked for right after): starting a D-Link fills the bar and ends a running charge, as a Drive
+  Form does in KH2.  Done in the hook on 205ee0, the game's confirm of a D-Link list entry (it takes the entry only
+  if it is not used up and its command id is above 0x162): that is the player starting a link and nothing else - a
+  link carried into another room does not come through it, so there is no refill per room.  Not when a link is
+  already active.  Test in `t_use`, through the installed hook and the game's own function.
+
 ## MP cost of the D-Link-only commands (mp.c base_cost; `DLinkCostByClass`)
 
 * Reported by players: D-Link heals for 5 MP.  The fourteen commands only D-Link decks have (ids e4..f1, category

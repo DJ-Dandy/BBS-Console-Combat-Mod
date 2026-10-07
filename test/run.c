@@ -170,6 +170,32 @@ static void t_use(void) {
     c = test_use(plate[0]); frame();
     c = test_use(plate[2]);
     CHECK(c && *test_burn() == 1 && *test_mp() == 0, "cure uses all MP");
+    /* starting a D-Link fills the bar and ends the charge (the game's own confirm, 140205ee0, on a list entry) */
+    { extern u8 *test_dlink_pick(u8 *P); extern int *test_link_refill(void);          /* our hook, then the game's function */
+      u8 *lp = calloc(1, 0x100); u16 lk[4] = { 0x163, 0, 0, 0 }; *(u16**)(lp + 0x58) = lk;
+      for (int i = 0; i < 200; i++) frame();
+      float before = *test_charge();
+      CHECK(*test_burn() == 1 && before > 0 && before < 100, "in MP charge (%.1f %%)", before);
+      u8 *r = test_dlink_pick(lp);
+      CHECK(r == (u8*)lk && (*(u32*)(lp + 0x60) & 2), "the game takes the entry");
+      CHECK(*test_burn() == 0 && *test_mp() == *test_mpmax() && *test_mp() > 0, "D-Link started: charge over, MP full (%.0f / %.0f)", *test_mp(), *test_mpmax());
+      /* an entry the game refuses (used up) changes nothing */
+      *test_mp() = 30;
+      CHECK(test_dlink_pick(lp) == NULL && *test_mp() == 30, "refused entry: MP as it was");
+      /* not with a link already active: the list is only there to end it */
+      *(u32*)(lp + 0x60) = 0; *(u32*)(cmd + 0x64) |= 0x80;
+      CHECK(test_dlink_pick(lp) == (u8*)lk && *test_mp() == 30, "link already active: no refill");
+      *(u32*)(cmd + 0x64) &= ~0x80u;
+      /* partly used bar, no charge running */
+      *(u32*)(lp + 0x60) = 0;
+      CHECK(test_dlink_pick(lp) == (u8*)lk && *test_mp() == *test_mpmax() && *test_burn() == 0, "from 30 MP: full");
+      /* a deck command's plate is not a D-Link entry */
+      *(u32*)(lp + 0x60) = 0; lk[0] = 0x83; *test_mp() = 30;
+      CHECK(test_dlink_pick(lp) == NULL && *test_mp() == 30, "not a D-Link (id 83): refused by the game, no refill");
+      /* switched off */
+      lk[0] = 0x163; *test_link_refill() = 0;
+      CHECK(test_dlink_pick(lp) == (u8*)lk && *test_mp() == 30, "DLinkRefillsMP = 0: the bar is left alone");
+      *test_link_refill() = 1; }
     printf("t_use done\n");
 }
 static void t_ether(void) {

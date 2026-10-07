@@ -1,0 +1,10 @@
+LIBRARY dinput8
+EXPORTS
+  DirectInput8Create = px_DirectInput8Create
+  DllCanUnloadNow = px_DllCanUnloadNow PRIVATE
+  DllGetClassObject = px_DllGetClassObject PRIVATE
+  DllRegisterServer = px_DllRegisterServer PRIVATE
+  DllUnregisterServer = px_DllUnregisterServer PRIVATE
+  GetdfDIJoystick = px_GetdfDIJoystick
+  GetdfDIKeyboard = px_GetdfDIKeyboard
+  GetdfDIMouse = px_GetdfDIMouse

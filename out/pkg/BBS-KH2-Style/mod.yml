@@ -1,0 +1,19 @@
+title: BBS KH2-Style
+description: >-
+  Makes Birth by Sleep Final Mix play more like Kingdom Hearts II. A KH2-style command menu
+  (Attack / Magic / Item / Link) with an MP bar and MP charge instead of command reloads.
+  Command Styles and finishers as optional timed prompts instead of being forced, similar to KH3. Faster
+  actions with less ending lag, weight in the air; a KH2-style camera;
+  walk-out from finished attacks; and revenge values for the humanoid bosses.
+  Steam version of HD 1.5+2.5 ReMIX. Needs the OpenKH mod loader (Panacea): this mod is a
+  DLL the mod loader starts with the game. Settings: bbskh2.ini.
+game: bbs
+assets:
+- name: dll/bbskh2.dll
+  method: copy
+  source:
+  - name: dll/bbskh2.dll
+- name: dll/bbskh2.ini
+  method: copy
+  source:
+  - name: dll/bbskh2.ini

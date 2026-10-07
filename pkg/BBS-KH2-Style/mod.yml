@@ -1,0 +1,19 @@
+title: BBS KH2 Style
+originalAuthor: You (built with Claude)
+description: >-
+  Makes Birth by Sleep play more like Kingdom Hearts II. Commands cost MP instead of reloading, with an
+  MP bar and MP burn; the command deck becomes an Attack / Magic / Item / Link menu. Includes Combo
+  Flow, the KH2-style camera and Revenge Value. A code mod (one DLL, loaded by the Mod Loader); no game
+  files are changed. Use "Build Only".
+game: bbs
+assets:
+- name: dll/bbskh2.dll
+  method: copy
+  platform: pc
+  source:
+  - name: dll/bbskh2.dll
+- name: dll/bbskh2.ini
+  method: copy
+  platform: pc
+  source:
+  - name: dll/bbskh2.ini

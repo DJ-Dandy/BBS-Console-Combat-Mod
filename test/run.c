@@ -158,11 +158,11 @@ static void t_use(void) {
       *test_link_in_burn() = 0;
       CHECK(mp_blocks_link() == 1 && FN(int, 0x2388a0, u8*)(cmd) == 0, "DLinkDuringCharge = 0: D-Link list refused in burn");
       *test_link_in_burn() = 1; }
-    /* recharge: 20 s x 60 ticks */
-    for (int i = 0; i < 600; i++) frame();
-    printf("  after 600 ticks: charge %.1f plate pct %.1f\n", *test_charge(), PCT(1));
+    /* recharge: 50 s x 60 ticks */
+    for (int i = 0; i < 1500; i++) frame();
+    printf("  after 1500 ticks: charge %.1f plate pct %.1f\n", *test_charge(), PCT(1));
     CHECK(*test_burn() == 1 && *test_charge() > 49 && *test_charge() < 51 && PCT(1) > 49 && PCT(1) < 51, "half charged");
-    for (int i = 0; i < 601; i++) frame();
+    for (int i = 0; i < 1502; i++) frame();
     CHECK(*test_burn() == 0 && *test_mp() == 100, "burn over: burn %d mp %.1f", *test_burn(), *test_mp());
     frame();
     for (int i = 0; i < 5; i++) CHECK(!(FLG(i) & 2) && PCT(i) == 100, "plate %d ready: flags %x pct %.1f", i, FLG(i), PCT(i));
@@ -271,6 +271,75 @@ static void t_ether(void) {
       for (int i = 0; i < 62; i++) frame();
       CHECK(*test_burn() == 1, "away from the save point the charge takes its normal time (%.1f)", *test_charge()); }
     printf("t_ether done\n");
+}
+/* MP Haste: the MP charge takes 50 s / (1 + 0.1 x Magic Haste installed); the ability's name and description
+   (needs BBS_MSG_NAMES / BBS_MSG_HELP = message/en/system/CT00500.ctd / CT00100.ctd for the texts) */
+extern float *test_charge_seconds(void), *test_haste_bonus(int atk); extern const char *test_haste_help(void);
+extern int *test_fresh(void);
+static u8 *slurp(const char *fn, size_t *n);
+static int charge_ticks(int magic, int attack) {
+    pl[0x4a3 + G(u8, 0x814900 + 0x1d0 * 0x18 + 7)] = (u8)magic;
+    pl[0x4a3 + G(u8, 0x814900 + 0x1cf * 0x18 + 7)] = (u8)attack;
+    *test_mp() = 0; *test_burn() = 1; *test_charge() = 0;
+    int n = 0;
+    while (*test_burn() && n < 100000) { test_tick(gauge); n++; }
+    return n;
+}
+static const char *ctd_find(const u8 *file, u32 id) {
+    const u32 *rec = (const u32*)(file + *(u32*)(file + 0x10));
+    for (int i = 0, n = *(u16*)(file + 0xe); i < n; i++, rec += 3) if (rec[0] == id) return (const char*)file + rec[1];
+    return NULL;
+}
+static void t_haste(void) {
+    static const u16 ids[] = { 0x5b, 0x83, 0x92 };
+    world(3, ids);
+    *test_fresh() = 0;
+    CHECK(*test_charge_seconds() == 50.0f && *test_haste_bonus(0) == 0.1f, "50 s, 0.1 a copy (%g, %g)", *test_charge_seconds(), *test_haste_bonus(0));
+    CHECK(G(u8, 0x814900 + 0x1d0 * 0x18 + 7) == 13 && G(u8, 0x814900 + 0x1cf * 0x18 + 7) == 12, "the two abilities' slots");
+    CHECK(FN(u8, 0x221900, u8*, u16)(pl, 0x1d0) == 0, "none installed");
+    int base = charge_ticks(0, 0);
+    printf("  MP charge in seconds:");
+    for (int k = 0; k <= 5; k++) {
+        int n = charge_ticks(k, 0); float want = 3000.0f / (1.0f + 0.1f * (float)k);
+        printf(" %d x MP Haste %.1f", k, (float)n / 60.0f);
+        CHECK(FN(u8, 0x221900, u8*, u16)(pl, 0x1d0) == k, "%d installed", k);
+        CHECK((float)n >= want && (float)n < want + 2.0f, "%d copies: %d ticks, want %.1f", k, n, want);
+    }
+    printf("\n");
+    CHECK(base >= 3000 && base <= 3001, "no ability: 50 s (%d ticks)", base);
+    { int n = charge_ticks(0, 2); CHECK(n >= 2727 && n <= 2729, "Attack Haste keeps 0.05 a copy: two -> %d ticks", n); }
+    { int n = charge_ticks(3, 2); CHECK(n >= 2142 && n <= 2144, "both add up: 1.4 -> %d ticks", n); }
+    *test_haste_bonus(1) = 0; { int n = charge_ticks(0, 5); CHECK(n == base, "AttackHasteBonus = 0: no effect (%d)", n); } *test_haste_bonus(1) = 0.05f;
+    charge_ticks(0, 0);
+
+    /* the texts: the game's "file is in memory" call (CRsrcCTD vtable slot 1), on the real files */
+    const char *nf = getenv("BBS_MSG_NAMES"), *hf = getenv("BBS_MSG_HELP");
+    size_t nn, hn; u8 *names = nf ? slurp(nf, &nn) : NULL, *help = hf ? slurp(hf, &hn) : NULL;
+    if (!names || !help) { printf("  (texts skipped: set BBS_MSG_NAMES and BBS_MSG_HELP)\n"); printf("t_haste done\n"); return; }
+    u64 (MSABI *ready)(u8*) = *(u64 (MSABI**)(u8*))RVA(0x637910);
+    CHECK((void*)ready != (void*)RVA(0x112ed0), "message file vtable slot is the mod's");
+    const char *was = ctd_find(names, 0xfa01d0);
+    CHECK(was && !strcmp(was, "Magic Haste"), "the game's name: %s", was ? was : "-");
+    u8 *o1 = calloc(1, 0x100); *(u8**)(o1 + 0x70) = names; ready(o1);
+    #define NAME(id) G(const char*, 0x814908 + (u32)(id) * 0x18)
+    CHECK(NAME(0x1d0) && !strcmp(NAME(0x1d0), "MP Haste"), "name: %s", NAME(0x1d0) ? NAME(0x1d0) : "-");
+    CHECK(NAME(0x1d0) == was, "written in the file itself");
+    CHECK(!strcmp(NAME(0x1cf), "Attack Haste") && !strcmp(NAME(0x1d1), "Combo F Boost") && !strcmp(NAME(0x92), "Cure") && !strcmp(NAME(0x1f1), ctd_find(names, 0xfa01f1)),
+          "the names around it are the game's (%s / %s)", NAME(0x1cf), NAME(0x1d1));
+    ready(o1);
+    CHECK(!strcmp(NAME(0x1d0), "MP Haste"), "a second call changes nothing");
+    const char *h0 = ctd_find(help, 0x32020d), *ha = ctd_find(help, 0x32020c), *hb = ctd_find(help, 0x32020e);
+    CHECK(h0 && !strncmp(h0, "Shortens the reload time for all magic commands", 47), "the game's description");
+    size_t room = h0 ? strlen(h0) : 0; char *a0 = strdup(ha), *b0 = strdup(hb);
+    u8 *o2 = calloc(1, 0x100); *(u8**)(o2 + 0x70) = help; ready(o2);
+    printf("  description: %s\n", h0);
+    CHECK(!strcmp(h0, test_haste_help()) && strlen(h0) <= room && strstr(h0, "10% faster"), "description replaced (%u of %u bytes)", (unsigned)strlen(h0), (unsigned)room);
+    { int w = 0, m = 0, lines = 1; for (const char *c = h0; *c; c++) { if (*c == '\n') { lines++; w = 0; } else if (++w > m) m = w; }
+      CHECK(lines <= 3 && m <= 58, "it fits the help box: %d lines, longest %d", lines, m); }
+    CHECK(!strcmp(ha, a0) && !strcmp(hb, b0), "the descriptions around it are the game's");
+    CHECK(*(u32*)(o2 + 0xb0) == 0x320000 && *(u32*)(o1 + 0xb0) == 0xfa0000, "the game's own set-up ran");
+    /* the game's lookup of an ability's description gives the new text: 1401b3d80 walks the loaded files */
+    printf("t_haste done\n");
 }
 /* the MP bar on the real 2D-layout runtime, with the real gauge_01.l2d (needs BBS_GAUGE_L2D=<file>) */
 extern void test_bar_update(u8 *g);
@@ -2174,6 +2243,7 @@ int main(int argc, char **argv) {
     int bad = 0;
     bad |= run("t_use", t_use);
     bad |= run("t_ether", t_ether);
+    bad |= run("t_haste", t_haste);
     bad |= run("t_bar", t_bar);
     bad |= run("t_tex", t_tex);
     bad |= run("t_draw", t_draw);

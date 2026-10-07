@@ -374,6 +374,34 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   link carried into another room does not come through it, so there is no refill per room.  Not when a link is
   already active.  Test in `t_use`, through the installed hook and the game's own function.
 
+## MP Haste (mp.c charge_speed, haste_texts; `[MP] ChargeSeconds`, `MPHasteBonus`, `MPHasteRename`)
+
+* KH2 (its 00battle.bin and the wiki): the MP charge takes 50 s / (1 + bonus); MP Haste 0.25, Hastera 0.5,
+  Hastega 1.0 (0.75 in Final Mix).  Here: `ChargeSeconds` 50 (was 20), and the game's own Magic Haste - ability
+  0x1d0, which can be installed several times; `140221900(player, id)` gives the number in effect, the byte
+  `player + 0x4a3 + slot`, slot = command table +7 (13) - adds `MPHasteBonus` 0.1 a copy: 50 / 45.5 / 41.7 / 38.5 /
+  35.7 / 33.3 s for 0..5 copies.  Attack Haste (0x1cf, slot 12) keeps the 0.05 a copy both abilities had before
+  (`AttackHasteBonus`); nobody asked for that one to change.
+* The name.  Command and ability names are file `message/<lang>/system/CT00500.ctd` (first id 0xfa0000, 498
+  messages, message i = command i).  A message file: `@CTD`, +8 first id, +0xc u16 layouts, +0xe u16 messages,
+  +0x10 offset of the message records (u32 id, u32 text offset, u32 layout), +0x14 / +0x18 the other tables; texts
+  are plain bytes.  When a file is in memory the game calls slot 1 of CRsrcCTD's vtable (637910 -> 140112ed0):
+  it sets +0x90 file, +0x98 records, +0xb0 / +0xb4 the id range, and for file 0xfa0000 copies every text's
+  address into the command table (`140814908 + id * 0x18`).  Nothing else reads a name (no other use of
+  0xfa0000 in the exe).
+* The description.  An ability's is message `0x32003d + id` of CT00100.ctd (`14041d880`, through the plain
+  lookup `1401b3d80`, which has 394 callers - not the SetNodeMsg lookup the MP-cost text hooks).  Magic Haste:
+  0x32020d, "Shortens the reload time for all magic commands / installed in your deck. Multi-install the ability
+  for even / quicker reloading." (125 bytes, lines up to 58).
+* So the vtable slot is replaced: after the game's function, the two texts are rewritten in the loaded file
+  itself, which every reader then sees.  The name goes there when it fits (MP Haste does; a longer one from the
+  ini goes through the name pointer instead); the description is cut to the room the game's text has.  Only when
+  the text found is the English one - other languages keep theirs - unless `MPHasteName` / `MPHasteHelp` are
+  given.  The mod is loaded before the game reads any file, so the slot is in place for the first load, and a
+  file loaded again is rewritten again.
+* Test: `t_haste` (charge times on the game's own ability count; the texts through the patched slot on the real
+  files, BBS_MSG_NAMES / BBS_MSG_HELP).  Not seen in the game by me.
+
 ## MP cost of the D-Link-only commands (mp.c base_cost; `DLinkCostByClass`)
 
 * Reported by players: D-Link heals for 5 MP.  The fourteen commands only D-Link decks have (ids e4..f1, category

@@ -41,7 +41,12 @@ static float c_max_per_slot = 10.0f;   /* extra MP per command deck slot the cha
 static float c_max_per_level = 0.0f;   /* extra MP per level above 1 */
 static float c_cost_scale = 1.0f;      /* MP cost = command's reload seconds x this */
 static int   c_cure_all = 1;           /* Cure/Cura/Curaga use all remaining MP (KH2 rule) */
-static float c_charge_seconds = 20.0f; /* MP burn: seconds to recharge from empty */
+static float c_charge_seconds = 50.0f; /* MP charge: seconds to recharge from empty (KH2's 50) */
+static float c_haste_bonus = 0.1f;     /* ... divided by 1 + this for every Magic Haste ("MP Haste") installed */
+static float c_atk_haste_bonus = 0.05f;/* ... and this for every Attack Haste */
+static int   c_haste_rename = 1;       /* Magic Haste is shown as MP Haste, with a description of what it does here */
+static char  c_haste_name[48], c_haste_help[256];
+static int   c_haste_name_set, c_haste_help_set;   /* given in the ini: used whatever the game's language */
 static int   c_cursor_advance = 0;     /* 1 = cursor moves to the next command after a use (vanilla) */
 static int   c_ether = 1;              /* Ether-type items restore MP */
 static int   c_tiered = 1;             /* magic costs spread out by tier (see base_cost) */
@@ -65,6 +70,18 @@ static float ini_f(const char *sec, const char *key, float def) {
     snprintf(p, sizeof p, "%s", g_ini); snprintf(d, sizeof d, "%g", def);
     GetPrivateProfileStringA(sec, key, d, b, sizeof b, p);
     return (float)atof(b);
+}
+/* a text; "\n" in it is a line break.  Returns 0 when the key is absent or empty. */
+static int ini_s(const char *sec, const char *key, char *out, size_t n) {
+    char b[512]; b[0] = 0;
+    GetPrivateProfileStringA(sec, key, "", b, sizeof b, g_ini);
+    size_t o = 0;
+    for (const char *p = b; *p && o + 1 < n; p++) {
+        if (p[0] == '\\' && p[1] == 'n') { out[o++] = '\n'; p++; }
+        else out[o++] = *p;
+    }
+    out[o] = 0;
+    return o != 0;
 }
 static u32 ini_x(const char *sec, const char *key, u32 def) {
     char p[MAX_PATH + 32], b[64], d[64];
@@ -94,6 +111,17 @@ static void load_ini(void) {
     c_cost_scale = ini_f("MP", "CostScale", c_cost_scale);
     c_cure_all = (int)ini_f("MP", "CureUsesAllMP", (float)c_cure_all);
     c_charge_seconds = ini_f("MP", "ChargeSeconds", c_charge_seconds);
+    c_haste_bonus = ini_f("MP", "MPHasteBonus", c_haste_bonus);
+    c_atk_haste_bonus = ini_f("MP", "AttackHasteBonus", c_atk_haste_bonus);
+    c_haste_rename = (int)ini_f("MP", "MPHasteRename", (float)c_haste_rename);
+    c_haste_name_set = ini_s("MP", "MPHasteName", c_haste_name, sizeof c_haste_name);
+    c_haste_help_set = ini_s("MP", "MPHasteHelp", c_haste_help, sizeof c_haste_help);
+    if (!c_haste_name_set) snprintf(c_haste_name, sizeof c_haste_name, "MP Haste");
+    if (!c_haste_help_set) {
+        char pc[16]; snprintf(pc, sizeof pc, "%g", c_haste_bonus * 100.0f);
+        snprintf(c_haste_help, sizeof c_haste_help, "Makes MP recharge %s%% faster once you have run out.\n"
+                 "Multi-install the ability for an even quicker recharge.", pc);
+    }
     c_cursor_advance = (int)ini_f("MP", "CursorAdvance", (float)c_cursor_advance);
     c_ether = (int)ini_f("MP", "EtherRestoresMP", (float)c_ether);
     c_save_seconds = ini_f("MP", "SavePointSeconds", c_save_seconds);
@@ -589,6 +617,71 @@ static int at_save_point(u8 *cmd) {
     u16 *k = P ? *(u16**)(P + 0x58) : NULL;
     return k && k[0] == 0x12e;
 }
+/* ---------------- MP Haste ----------------
+   KH2: the MP charge takes 50 s / (1 + bonus), MP Haste being 0.25 of bonus.  Here the game's own Magic Haste
+   (ability 0x1d0, which can be installed several times; 140221900 gives the number in effect) is that ability:
+   0.1 a copy.  Attack Haste (0x1cf), which has nothing of its own left to shorten, keeps the 0.05 a copy it had.
+
+   Its texts.  A message file (CRsrcCTD) is: +0xe u16 number of messages, +0x10 offset of the message records
+   (u32 id, u32 text offset, u32 layout), texts as plain bytes.  Once a file is in memory the game calls slot 1 of
+   the object's vtable (140112ed0: +0x90 file, +0x98 records, +0xb0 first id), which for the command names (file
+   0xfa0000) also fills the name pointers of the command table (140814908 + id * 0x18) - the only way a name is
+   read.  An ability's description is message 0x32003d + id of file 0x320000 [14041d880].  That slot is hooked and
+   the two texts are rewritten in the file as loaded, so every reader gets them: the name there if it fits, else
+   through the name pointer; the description cut to the room the game's has (125 bytes in English).  Only the
+   English texts are replaced, unless the ini gives texts of its own. */
+#define VT_CTD_READY 0x637910u          /* CRsrcCTD vtable slot 1 */
+#define FN_CTD_READY 0x112ed0u
+#define AB_ATTACK_HASTE 0x1cf
+#define AB_MAGIC_HASTE  0x1d0
+#define MSG_NAMES 0xfa0000u
+#define MSG_ABILITY_HELP 0x32003du
+static float charge_speed(u8 *pl) {
+    float s = 1.0f;
+    if (pl) s += c_haste_bonus * (float)FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_MAGIC_HASTE)
+               + c_atk_haste_bonus * (float)FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_ATTACK_HASTE);
+    return s < 0.05f ? 0.05f : s;
+}
+static char *ctd_text(u8 *self, u32 id) {
+    u8 *file = *(u8**)(self + 0x90); u32 *rec = *(u32**)(self + 0x98);
+    if (!file || !rec) return NULL;
+    for (int i = 0, n = *(u16*)(file + 0xe); i < n; i++, rec += 3) if (rec[0] == id) return (char*)file + rec[1];
+    return NULL;
+}
+/* the loaded file is the game's heap memory; should it ever not be writable, leave it alone */
+static int can_write(const char *p, size_t n) {
+#ifdef _WIN32
+    MEMORY_BASIC_INFORMATION mi;
+    if (!VirtualQuery(p, &mi, sizeof mi) || mi.State != MEM_COMMIT) return 0;
+    if (!(mi.Protect & (PAGE_READWRITE | PAGE_EXECUTE_READWRITE)) || (mi.Protect & PAGE_GUARD)) return 0;
+    return (const u8*)p + n <= (const u8*)mi.BaseAddress + mi.RegionSize;
+#else
+    (void)p; (void)n; return 1;
+#endif
+}
+static void haste_texts(u8 *self) {
+    u32 first = *(u32*)(self + 0xb0);
+    if (first == MSG_NAMES) {
+        char *t = ctd_text(self, MSG_NAMES + AB_MAGIC_HASTE);
+        if (!t || !(c_haste_name_set || !strcmp(t, "Magic Haste"))) return;
+        if (strlen(c_haste_name) <= strlen(t) && can_write(t, strlen(t) + 1)) strcpy(t, c_haste_name);
+        else G(const char*, 0x814908 + AB_MAGIC_HASTE * 0x18) = c_haste_name;
+        if (g_debug) LOG("mp: Magic Haste is named \"%s\"", c_haste_name);
+    } else if (first == DESC_MSG) {
+        char *t = ctd_text(self, MSG_ABILITY_HELP + AB_MAGIC_HASTE);
+        if (!t || !(c_haste_help_set || !strncmp(t, "Shortens the reload time for all magic", 38))) return;
+        if (!can_write(t, strlen(t) + 1)) { LOG("mp: the description of MP Haste cannot be written"); return; }
+        size_t room = strlen(t), n = strlen(c_haste_help);
+        if (n > room) { n = room; LOG("mp: the description of MP Haste is cut to %u bytes", (unsigned)room); }
+        memcpy(t, c_haste_help, n); t[n] = 0;
+    }
+}
+static u64 (MSABI *o_ctd_ready)(u8 *self, u64 a, u64 b, u64 c);
+static u64 MSABI ctd_ready_hook(u8 *self, u64 a, u64 b, u64 c) {
+    u64 r = o_ctd_ready(self, a, b, c);
+    haste_texts(self);
+    return r;
+}
 /* ---------------- per frame (the player gauge's update, 209f20) ---------------- */
 static void tick(u8 *g) {
     float dt = *(float*)(g + 0x20);
@@ -599,12 +692,7 @@ static void tick(u8 *g) {
     if (g_mp > g_mpmax) g_mp = g_mpmax;
     u8 *cmd = CMD, *pl = player();
     if (g_burn) {
-        float speed = 1.0f;
-        if (pl) {       /* the reload abilities speed the recharge up */
-            int haste = FN(u8, 0x221900, u8*, int)(pl, 0x1cf) + FN(u8, 0x221900, u8*, int)(pl, 0x1d0);
-            speed += 0.05f * (float)haste;
-        }
-        g_charge += dt * 100.0f / (c_charge_seconds * 60.0f) * speed;
+        g_charge += dt * 100.0f / (c_charge_seconds * 60.0f) * charge_speed(pl);
         if (g_charge >= 100.0f) burn_end();
     }
     /* on a save point (its "Save" prompt is up): MP comes back fast, and a recharge finishes fast */
@@ -649,6 +737,7 @@ int mod_install(void) {
     if (!call_ok(0x206a6e, 0x1ce550)) { LOG("call site 206a6e does not match"); bad++; }
     if (c_desc_cost && !call_ok(DESC_CALL, MSG_FIND)) { LOG("description site does not match"); bad++; }
     if (c_floor && !call_ok(FLOOR_CALL, HAS_ABILITY)) { LOG("damage floor site does not match"); bad++; }
+    if (c_haste_rename && G(u64, VT_CTD_READY) != (u64)(g_base + FN_CTD_READY)) { LOG("message file vtable does not match"); bad++; }
     if (!bundle_check()) bad++;
     if (!menu_check()) bad++;
     if (!tex_check()) bad++;
@@ -663,6 +752,11 @@ int mod_install(void) {
     if (c_floor) {
         hook_call(FLOOR_CALL, HAS_ABILITY, floor_ability_hook, "damage floor");
         LOG("combat: EXP Zero's minimum damage applies without the ability %s", c_floor >= 2 ? "on every difficulty" : "on Critical");
+    }
+    if (c_haste_rename) {
+        u64 old = (u64)(g_base + FN_CTD_READY), f = (u64)ctd_ready_hook;
+        o_ctd_ready = (void*)old;
+        patch_bytes(VT_CTD_READY, (u8*)&old, (u8*)&f, 8, "message file ready");
     }
     bundle_apply();
     menu_apply();
@@ -733,6 +827,9 @@ int *test_burn(void) { return &g_burn; }
 float *test_charge(void) { return &g_charge; }
 int *test_bar(void) { return &g_bar; }
 void test_tick(u8 *g) { tick(g); }
+float *test_charge_seconds(void) { return &c_charge_seconds; }
+float *test_haste_bonus(int atk) { return atk ? &c_atk_haste_bonus : &c_haste_bonus; }
+const char *test_haste_help(void) { return c_haste_help; }
 void test_gauge_update(u8 *g) { gauge_update_hook(g); }
 u8 *test_use(u8 *P) { return use_hook(P); }
 #endif

@@ -14,8 +14,10 @@ file is changed, and removing the mod puts everything back.
   button or d-pad right opens a list; the jump button closes it. After a command is used the cursor is back on
   Attack.
 - **MP instead of reloads**: commands cost MP (their old reload time, so Fire 10, Firaga 15 ...). At 0 MP the bar
-  recharges (MP charge). Cure takes all remaining MP. Ethers and Elixirs restore MP. KH2-style MP bar under the
-  Focus gauge; a command that would empty the bar has its name in yellow.
+  recharges (MP charge, 50 seconds as in KH2). The Magic Haste ability is now **MP Haste**: every copy installed
+  makes the charge 10 % faster. Cure takes all remaining MP. Ethers and Elixirs restore MP, and starting a D-Link
+  refills the bar. KH2-style MP bar under the Focus gauge; a command that would empty the bar has its name in
+  yellow.
 - **Shortcuts**: hold L1 and the menu turns into four commands on the face buttons, as in KH2. Set them in the
   pause menu under *Command Decks > Shortcuts*.
 - **Command Styles and finishers are offers**: a full gauge shows a prompt with a timer above the menu. Press the

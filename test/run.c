@@ -198,6 +198,26 @@ static void t_ether(void) {
       CHECK(mp_cost(0xb8) == 10 && mp_cost(0xb9) == 15 && mp_cost(0xba) == 20, "Stop 10 / Stopra 15 / Stopga 20");
       CHECK(mp_cost(0x95) == 20 && mp_cost(0xad) == 25 && mp_cost(0xaf) == 25 && mp_cost(0xae) == 30 && mp_cost(0xac) == 50, "other magic: 15 -> 20, 20 -> 25, the rest as it was");
       CHECK(mp_cost(0x5b) == 10 && mp_cost(0x5c) == 15 && mp_cost(0x62) == 20 && mp_cost(0x6f) == 25 && mp_cost(0xd3) == 40, "attack and friendship commands keep their reload times"); }
+    /* the commands only D-Link decks have: by class, as the game costs ordinary commands; their two heals as Cure */
+    { extern int *test_dlink_cost(void); extern s16 *mp_cost_overrides(void); extern int mp_would_burn(int id);
+      static const struct { int id, cost; const char *name; } dl[] = {
+          { 0xe4, 15, "Holy" }, { 0xe5, 10, "WishTurn" }, { 0xe6, 15, "FairyStep" }, { 0xe7, 15, "WishShot" }, { 0xe8, 30, "FairyCure" },
+          { 0xe9, 30, "Doc" }, { 0xea, 15, "Grumpy" }, { 0xeb, 15, "Sneezy" }, { 0xec, 10, "Happy" }, { 0xed, 15, "Sleepy" },
+          { 0xee, 15, "Bashful" }, { 0xef, 20, "Dopey" }, { 0xf0, 20, "DarkAxis" }, { 0xf1, 20, "DarkSplicer" } };
+      for (unsigned i = 0; i < sizeof dl / sizeof *dl; i++)
+          CHECK(G(u8, 0x814900 + dl[i].id * 0x18 + 1) == 8 && G(u8, 0x811080 + dl[i].id * 0x1e + 3) == 5 && mp_cost(dl[i].id) == dl[i].cost,
+                "%s (%x): category %d, reload %d, cost %.0f, expected %d", dl[i].name, dl[i].id, G(u8, 0x814900 + dl[i].id * 0x18 + 1), G(u8, 0x811080 + dl[i].id * 0x1e + 3), mp_cost(dl[i].id), dl[i].cost);
+      CHECK(mp_cost(0xe3) == 2 && mp_cost(0xf2) == 20, "the commands either side of them are as they were (%.0f, %.0f)", mp_cost(0xe3), mp_cost(0xf2));
+      *test_mp() = 100; *test_burn() = 0;
+      CHECK(mp_would_burn(0xe8) == 1 && mp_would_burn(0xe9) == 1 && mp_would_burn(0x94) == 1 && mp_would_burn(0xe7) == 0, "the two heals use all MP like Curaga; Wish Shot does not");
+      mp_cost_overrides()[0xe9] = 12;
+      CHECK(mp_cost(0xe9) == 12 && mp_would_burn(0xe9) == 0, "[Cost] e9=12: Doc costs 12 and no longer takes everything");
+      mp_cost_overrides()[0x94] = 25;
+      CHECK(mp_cost(0x94) == 25 && mp_would_burn(0x94) == 0 && mp_would_burn(0x93) == 1, "[Cost] 94=25: the same for Curaga; Cura still takes everything");
+      mp_cost_overrides()[0xe9] = 0; mp_cost_overrides()[0x94] = 0;
+      *test_dlink_cost() = 0;
+      CHECK(mp_cost(0xe4) == 5 && mp_cost(0xe9) == 5 && mp_cost(0xf1) == 5 && mp_would_burn(0xe9) == 0, "DLinkCostByClass = 0: 5 each, as before");
+      *test_dlink_cost() = 1; }
     /* which commands would empty the bar */
     { extern int mp_would_burn(int id);
       CHECK(!mp_would_burn(0x83) && mp_would_burn(0x92), "full MP: Fire is fine, Cure always ends in MP charge");

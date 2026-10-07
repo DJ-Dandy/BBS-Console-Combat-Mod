@@ -361,6 +361,22 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   moves at the pad's repeat rate, as the Magic and Items lists.  `LinkCursorTime` > 0 keeps the animation with
   that time (10 = the game's).  Test: in `t_menu`, on the game's own functions.
 
+## MP cost of the D-Link-only commands (mp.c base_cost; `DLinkCostByClass`)
+
+* Reported by players: D-Link heals for 5 MP.  The fourteen commands only D-Link decks have (ids e4..f1, category
+  8; decks: table at file offset 8161f8, 14 D-Links x 3 levels x 8 ids) all have reload 5 in the command table, so
+  cost = reload made them 5 MP.  Two heal: e8 (Cinderella) and e9 (Doc), strength 100 / 125 / 150 by D-Link level
+  against Curaga's 100; several attacks are stronger than 20 MP commands.
+* The game's own rule for ordinary one-slot commands is by class (table byte +4, low nibble): class 1 reloads in
+  10, class 2 in 15, class 3 in 20 (attack: 10/12 at 10, 7/11 at 15, 8/8 at 20; magic the same with the cures,
+  status spells and Mega Flare as exceptions).  The D-Link commands now cost by that rule; the two heals are cures
+  (`is_cure`): base 30, all MP under CureUsesAllMP.
+  e4 Holy 15, e5 Wish Circle 10, e6 Enchanted Step 15, e7 Wish Shot 15, e8 heal, e9 Doc heal, ea Grumpy 15,
+  eb Sneezy 15, ec Happy 10, ed Sleepy 15, ee Bashful 15, ef Dopey 20, f0 Dark Spiral 20, f1 Dark Splicer 20.
+* A `[Cost]` entry now also wins over CureUsesAllMP (the ini always said it overrides everything; for the cures
+  it did not).
+* Test: in `t_ether`, against the real command tables.
+
 ## Shortcuts: a face button counts where it went down (shortcut.c pad_frame)
 
 * Reported: circle held, then L1 -> circle's shortcut was used.  The game's "pressed this frame" word is

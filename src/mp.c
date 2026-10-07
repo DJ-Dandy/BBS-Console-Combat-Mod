@@ -30,6 +30,7 @@ static u8 *player(void) { u8 *m = MGR; return m ? *(u8**)(m + 0x118) : NULL; }
 #define CMD_TYPE(id)   G(u8, 0x814900 + (u32)(id) * 0x18 + 0)
 #define CMD_CAT(id)    G(u8, 0x814900 + (u32)(id) * 0x18 + 1)
 #define CMD_SUB(id)    G(u8, 0x814900 + (u32)(id) * 0x18 + 3)
+#define CMD_CLASS(id)  (G(u8, 0x814900 + (u32)(id) * 0x18 + 4) & 15)       /* 1..3: the command's rank */
 #define CMD_RELOAD(id) G(u8, 0x811080 + (u32)(id) * 0x1e + 3)
 #define CMD_MAX 0x23a
 
@@ -44,6 +45,7 @@ static float c_charge_seconds = 20.0f; /* MP burn: seconds to recharge from empt
 static int   c_cursor_advance = 0;     /* 1 = cursor moves to the next command after a use (vanilla) */
 static int   c_ether = 1;              /* Ether-type items restore MP */
 static int   c_tiered = 1;             /* magic costs spread out by tier (see base_cost) */
+static int   c_dlink_cost = 1;         /* the commands only D-Link decks have cost by their class, their two cures as Cure (see base_cost) */
 static float c_save_seconds = 1.0f;    /* standing on a save point: seconds for a full bar / a full recharge (0 = off) */
 /* MP bar: right end and top edge in the game's screen units (480 x 272), thickness, length of the bar itself at
    100 MP, and the share of any extra MP that lengthens it */
@@ -94,6 +96,7 @@ static void load_ini(void) {
     c_ether = (int)ini_f("MP", "EtherRestoresMP", (float)c_ether);
     c_save_seconds = ini_f("MP", "SavePointSeconds", c_save_seconds);
     c_tiered = (int)ini_f("MP", "TieredMagic", (float)c_tiered);
+    c_dlink_cost = (int)ini_f("MP", "DLinkCostByClass", (float)c_dlink_cost);
     c_floor = (int)ini_f("Combat", "DamageFloor", (float)c_floor);
     c_desc_cost = (int)ini_f("Menu", "DescriptionCost", (float)c_desc_cost);
     for (int id = 0x5b; id < 0x1a0; id++) {             /* the deck commands */
@@ -142,11 +145,26 @@ static float max_mp(void) {
 /* Base cost of a command = its original reload time in seconds.  Magic is spread out by tier (ini TieredMagic):
    the game gives a spell and its -ra version the same time, so the -ra spells go from 10 to 15, and what was 15 /
    20 (the -ga spells and the stronger ones) moves up to 20 / 25.  [Cost] <hex id>=<MP> in the ini overrides any
-   single command. */
+   single command.
+
+   The fourteen commands that only D-Link decks have (e4..f1, category 8: Mickey's Holy, Cinderella's four, the
+   seven dwarfs, Vanitas's two) all reload in 5 seconds in the game - their limit there is the D-Link's own gauge -
+   which made them 5 MP: a heal as strong as Curaga for 5, attacks stronger than a 20 MP command for 5.  They are
+   costed as the game costs every ordinary command, by class: class 1 reloads in 10, class 2 in 15, class 3 in 20
+   (one-slot attack and magic commands, with a handful of exceptions).  The two that heal (e8 Cinderella's, e9 Doc;
+   strength 100 / 125 / 150 by D-Link level where Curaga's is 100) are cures: 30 like Cure, and all remaining MP
+   under CureUsesAllMP.  ini DLinkCostByClass = 0 puts the 5 back. */
 static s16 g_cost_over[CMD_MAX];        /* 0 = none */
+static int is_dlink_only(int id) { return id >= 0xe4 && id <= 0xf1; }
+static int is_dlink_cure(int id) { return id == 0xe8 || id == 0xe9; }
 static int base_cost(int id) {
     if (g_cost_over[id] > 0) return g_cost_over[id];
     int c = CMD_RELOAD(id);
+    if (c_dlink_cost && is_dlink_only(id)) {
+        if (is_dlink_cure(id)) return 30;
+        int cls = CMD_CLASS(id);
+        return cls >= 3 ? 20 : cls == 2 ? 15 : 10;
+    }
     if (c_tiered && CMD_CAT(id) == 2) {
         switch (id) {
         case 0x84: case 0x8b: case 0x8f: case 0x9a: case 0x9d: case 0xa3: case 0xb9: return 15;   /* Fira, Blizzara, Thundara, Zero Gravira, Magnera, Aerora, Stopra */
@@ -162,10 +180,16 @@ float mp_cost(int id) {
     float c = (float)base_cost(id) * c_cost_scale;
     return c < 1.0f ? 1.0f : c;
 }
-static int is_cure(int id) { return id >= 0x92 && id <= 0x94; }   /* Cure, Cura, Curaga */
+/* Cure, Cura, Curaga, and the D-Link decks' two heals: what CureUsesAllMP is about.  A command with a cost of its
+   own in [Cost] is not one of them: that cost is what it costs, as the ini says. */
+static int is_cure(int id) {
+    if (id <= 0 || id >= CMD_MAX || g_cost_over[id] > 0) return 0;
+    return (id >= 0x92 && id <= 0x94) || (c_dlink_cost && is_dlink_cure(id));
+}
 
 /* would using this command now end in MP burn?  (what the menu marks) */
 s16 *mp_cost_overrides(void) { return g_cost_over; }
+int *test_dlink_cost(void) { return &c_dlink_cost; }
 int mp_would_burn(int id) {
     if (g_burn || id <= 0 || id >= CMD_MAX) return 0;
     if (c_cure_all && is_cure(id)) return 1;

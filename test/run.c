@@ -344,7 +344,7 @@ static void t_haste(void) {
     CHECK(!strcmp(ha, a0) && !strcmp(hb, b0), "the descriptions around them are the game's");
     { const char *hz = ctd_find(help, 0x320216);
       printf("  Berserker: %s\n", hz);
-      CHECK(hz && !strcmp(hz, test_berserk_help()) && strstr(hz, "20%") && strlen(hz) <= 97, "Berserker's description (%u bytes)", (unsigned)strlen(hz));
+      CHECK(hz && !strcmp(hz, test_berserk_help()) && strstr(hz, "5%") && strlen(hz) <= 97, "Berserker's description (%u bytes)", (unsigned)strlen(hz));
       CHECK(!strncmp(ctd_find(help, 0x320215), "Increases your resistance to darkness", 37) && !strncmp(ctd_find(help, 0x320217), "Increases your Defense", 22), "its neighbours are the game's"); }
     /* an ability whose bonus is 0 keeps the game's texts */
     { size_t n2, h2; u8 *nm2 = slurp(nf, &n2), *hp2 = slurp(hf, &h2);
@@ -358,7 +358,7 @@ static void t_haste(void) {
     /* the game's lookup of an ability's description gives the new text: 1401b3d80 walks the loaded files */
     printf("t_haste done\n");
 }
-/* Berserker: Reload Boost renamed; what the player deals during the MP charge is 20 % higher, and nothing else.
+/* Berserker: Reload Boost renamed; what the player deals during the MP charge is 5 % higher, and nothing else.
    On the game's own damage function, through the mod's hook of its one call. */
 extern u32 test_damage(u8 *atk, u8 *hit); extern float *test_berserk_pct(void); extern const char *test_berserk_help(void);
 static u8 *ent_tab[8];
@@ -380,40 +380,43 @@ static void t_berserk(void) {
     entity(3, 3, pl, NULL);                             /* something the player's (a spell in flight) */
     entity(4, 3, foe, NULL);                            /* something the enemy's */
     u8 *atk = calloc(1, 0x100), *hit = calloc(1, 0x100);
-    *(s16*)(atk + 0x82) = 20; *(s16*)(atk + 0x84) = 100; *(float*)(atk + 0x88) = 1.0f;
+    *(s16*)(atk + 0x82) = 105; *(s16*)(atk + 0x84) = 100; *(float*)(atk + 0x88) = 1.0f;
     *(s16*)(hit + 0xac) = 5; *(s16*)(hit + 0xae) = 9999; *(float*)(hit + 0xc4) = 1.0f;
     #define DMG(owner) (*(u32*)(atk + 0x94) = (owner), test_damage(atk, hit))
     int slot = G(u8, 0x814900 + 0x1d9 * 0x18 + 7);
     CHECK(slot == 22, "Reload Boost's ability slot (%d)", slot);
     { u8 *p = RVA(0x1f985a); s32 d; memcpy(&d, p + 1, 4); CHECK(p[0] == 0xE8 && (u32)(0x1f985a + 5 + d) != 0x1f9180, "the game's damage call goes through the mod"); }
-    CHECK(*test_berserk_pct() == 20.0f, "20 %% by default (%g)", *test_berserk_pct());
+    CHECK(*test_berserk_pct() == 5.0f, "5 %% by default (%g)", *test_berserk_pct());
     *test_burn() = 0; pl[0x4a3 + slot] = 1;
-    CHECK(DMG(1) == 15, "the game's formula: (20 - 5) x 100 %% = %u", DMG(1));
-    CHECK(DMG(1) == 15, "ability on, MP there: nothing added (%u)", DMG(1));
+    CHECK(DMG(1) == 100, "the game's formula: (105 - 5) x 100 %% = %u", DMG(1));
+    CHECK(DMG(1) == 100, "ability on, MP there: nothing added (%u)", DMG(1));
     *test_burn() = 1; pl[0x4a3 + slot] = 0;
-    CHECK(DMG(1) == 15, "MP charge without the ability: nothing added (%u)", DMG(1));
+    CHECK(DMG(1) == 100, "MP charge without the ability: nothing added (%u)", DMG(1));
     pl[0x4a3 + slot] = 1;
-    CHECK(DMG(1) == 18, "MP charge with the ability: 15 -> %u", DMG(1));
-    CHECK(*(float*)(atk + 0x88) == 1.0f && *(s16*)(atk + 0x82) == 20 && *(s16*)(atk + 0x84) == 100, "the attack record is left as it was");
-    CHECK(DMG(3) == 18, "the player's spell: %u", DMG(3));
-    CHECK(DMG(2) == 15 && DMG(4) == 15, "an enemy's attacks: %u / %u", DMG(2), DMG(4));
-    CHECK(DMG(5) == 15 && DMG(0) == 15, "an owner that is not there: %u", DMG(5));
+    CHECK(DMG(1) == 105, "MP charge with the ability: 100 -> %u", DMG(1));
+    CHECK(*(float*)(atk + 0x88) == 1.0f && *(s16*)(atk + 0x82) == 105 && *(s16*)(atk + 0x84) == 100, "the attack record is left as it was");
+    CHECK(DMG(3) == 105, "the player's spell: %u", DMG(3));
+    CHECK(DMG(2) == 100 && DMG(4) == 100, "an enemy's attacks: %u / %u", DMG(2), DMG(4));
+    CHECK(DMG(5) == 100 && DMG(0) == 100, "an owner that is not there: %u", DMG(5));
     *(float*)(atk + 0x88) = 1.5f;
-    CHECK(DMG(1) == 27 && *(float*)(atk + 0x88) == 1.5f, "on top of the game's own multiplier: 22.5 -> %u", DMG(1));
+    CHECK(DMG(1) == 157 && *(float*)(atk + 0x88) == 1.5f, "on top of the game's own multiplier: 150 -> %u", DMG(1));
     *(float*)(atk + 0x88) = 1.0f;
-    *(u16*)(atk + 0x7e) = 0x22; CHECK(DMG(1) == 120, "a cure (kind 22) is not raised: %u", DMG(1));
-    *(u16*)(atk + 0x7e) = 0x2a; CHECK(DMG(1) == 20, "a percentage (kind 2a) is not raised: %u", DMG(1));
-    *(u16*)(atk + 0x7e) = 0x80; CHECK(DMG(1) == 18, "the kind's top bit is a flag: %u", DMG(1));
+    *(u16*)(atk + 0x7e) = 0x22; CHECK(DMG(1) == 205, "a cure (kind 22) is not raised: %u", DMG(1));
+    *(u16*)(atk + 0x7e) = 0x2a; CHECK(DMG(1) == 105, "a percentage (kind 2a) is not raised: %u", DMG(1));
+    *(u16*)(atk + 0x7e) = 0x80; CHECK(DMG(1) == 105, "the kind's top bit is a flag: %u", DMG(1));
+    *(s16*)(atk + 0x82) = 24; CHECK(DMG(1) == 19, "a small hit: 19 x 1.05 = 19.95, the game drops the fraction (%u)", DMG(1));
+    *(s16*)(atk + 0x82) = 25; CHECK(DMG(1) == 21, "from 20 on the bonus shows: 20 -> %u", DMG(1));
+    *(s16*)(atk + 0x82) = 105;
     *(u16*)(atk + 0x7e) = 0;
     *(s16*)(atk + 0x82) = 30000; *(s16*)(atk + 0x84) = 200; *(s16*)(hit + 0xae) = 32000;
     CHECK(DMG(1) == 0x7fff, "never past what the hit record can hold (%u)", DMG(1));
-    *(s16*)(atk + 0x82) = 20; *(s16*)(atk + 0x84) = 100; *(s16*)(hit + 0xae) = 9999;
-    *test_berserk_pct() = 50; CHECK(DMG(1) == 22, "BerserkerDamage = 50: %u", DMG(1));
-    *test_berserk_pct() = 0;  CHECK(DMG(1) == 15, "BerserkerDamage = 0: off (%u)", DMG(1));
-    *test_berserk_pct() = 20;
+    *(s16*)(atk + 0x82) = 105; *(s16*)(atk + 0x84) = 100; *(s16*)(hit + 0xae) = 9999;
+    *test_berserk_pct() = 50; CHECK(DMG(1) == 150, "BerserkerDamage = 50: %u", DMG(1));
+    *test_berserk_pct() = 0;  CHECK(DMG(1) == 100, "BerserkerDamage = 0: off (%u)", DMG(1));
+    *test_berserk_pct() = 5;
     /* the MP charge ends: so does the bonus */
     *test_charge() = 99.99f; test_tick(gauge); test_tick(gauge);
-    CHECK(*test_burn() == 0 && DMG(1) == 15, "charge over: back to %u", DMG(1));
+    CHECK(*test_burn() == 0 && DMG(1) == 100, "charge over: back to %u", DMG(1));
     /* HP has nothing to do with it any more, and the old reload effect is gone with the reloads */
     printf("t_berserk done\n");
 }

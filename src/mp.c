@@ -47,7 +47,7 @@ static float c_atk_haste_bonus = 0.05f;/* ... and this for every Attack Haste */
 static int   c_haste_rename = 1;       /* both are shown as MP Haste, with a description of what they do here */
 static char  c_haste_name[48], c_haste_help[2][256];    /* description: [0] Magic Haste's, [1] Attack Haste's */
 static int   c_haste_name_set, c_haste_help_set;   /* given in the ini: used whatever the game's language */
-static float c_berserk_pct = 20.0f;    /* Reload Boost ("Berserker"): percent more damage dealt during MP charge (0 = off) */
+static float c_berserk_pct = 5.0f;     /* Reload Boost ("Berserker"): percent more damage dealt during MP charge (0 = off) */
 static int   c_berserk_rename = 1;
 static char  c_berserk_name[48], c_berserk_help[256];
 static int   c_berserk_name_set, c_berserk_help_set;
@@ -674,7 +674,7 @@ static float berserk_factor(u8 *atk) {
     u8 *e = FN(u8*, ENTITY_BY_ID, u32)(*(u32*)(atk + 0x94)); if (!e) return 1.0f;
     u8 *par = *(u8**)(e + 0x10);
     if (!(e == pl || *(int*)(e + 0x28) == 1 || (par && (par == pl || *(int*)(par + 0x28) == 1)))) return 1.0f;
-    return 1.0f + c_berserk_pct * 0.01f * (float)n;
+    return (1.0f + c_berserk_pct * 0.01f * (float)n) * 1.000001f;      /* 100 x 1.05 is to be 105, not 104.99999 */
 }
 static u32 MSABI damage_hook(u8 *atk, u8 *hit) {
     float f = berserk_factor(atk);

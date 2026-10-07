@@ -414,7 +414,9 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   like the two Hastes has nothing left to do here (its only reader, the reload factor `140235140`, feeds a
   reload the mod replaces).  That one was taken.  The name is "Berserker" (the request spelt it "beserker").
 * A percentage, not KH2's flat Strength: the test save is level 99 (Strength 53), where +2 would be about 4 %, and
-  without the endless combo the damage is all the ability is.  20 % by default.
+  without the endless combo the damage is all the ability is.  20 % in the first build, 5 % on request.  The
+  game truncates damage to a whole number, so 5 % adds nothing to a hit below 20; the factor is nudged up by a
+  millionth so that 100 x 1.05 gives 105 and not 104 (1.05 is 1.0499999 as a float).
 * Where damage is worked out: `1401f9180(attack, hit)`, called only from `1401f9790` [1f985a] when an attack
   registers on a target; the result is the hit record's +0xaa (s16), which the enemy's damage function
   `1402d24b0` then takes off its HP.

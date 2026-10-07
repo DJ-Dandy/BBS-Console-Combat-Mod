@@ -15,7 +15,8 @@ file is changed, and removing the mod puts everything back.
   Attack.
 - **MP instead of reloads**: commands cost MP (their old reload time, so Fire 10, Firaga 15 ...). At 0 MP the bar
   recharges (MP charge, 25 seconds). The Magic Haste and Attack Haste abilities are now both **MP Haste**: every copy
-  installed makes the charge 5 % faster. Cure takes all remaining MP. Ethers and Elixirs restore MP, and starting a D-Link
+  installed makes the charge 5 % faster. Reload Boost is now **Berserker**: 20 % more damage dealt while the bar
+  recharges. Cure takes all remaining MP. Ethers and Elixirs restore MP, and starting a D-Link
   refills the bar. KH2-style MP bar under the Focus gauge; a command that would empty the bar has its name in
   yellow.
 - **Shortcuts**: hold L1 and the menu turns into four commands on the face buttons, as in KH2. Set them in the

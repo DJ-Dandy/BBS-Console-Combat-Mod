@@ -405,6 +405,35 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 * Test: `t_haste` (charge times on the game's own ability count; the texts through the patched slot on the real
   files, BBS_MSG_NAMES / BBS_MSG_HELP).  Not seen in the game by me.
 
+## Berserker (mp.c berserk_factor, damage_hook; `[MP] BerserkerDamage`, `BerserkerRename`)
+
+* Asked for: "command boost" renamed to Berserker, doing more damage during the MP charge and nothing else of
+  KH2's Berserk Charge (there: Strength +1, +2 in Final Mix, per copy, and combos that never reach a finisher).
+  The game has no Command Boost; the one Boost about commands is **Reload Boost** (0x1d9, slot 22, one copy:
+  "Shortens the reload time for all commands installed in your deck whenever your HP falls below 25%"), which
+  like the two Hastes has nothing left to do here (its only reader, the reload factor `140235140`, feeds a
+  reload the mod replaces).  That one was taken.  The name is "Berserker" (the request spelt it "beserker").
+* A percentage, not KH2's flat Strength: the test save is level 99 (Strength 53), where +2 would be about 4 %, and
+  without the endless combo the damage is all the ability is.  20 % by default.
+* Where damage is worked out: `1401f9180(attack, hit)`, called only from `1401f9790` [1f985a] when an attack
+  registers on a target; the result is the hit record's +0xaa (s16), which the enemy's damage function
+  `1402d24b0` then takes off its HP.
+      crit (`1401f90e0`: attack+0x78 percent chance, +0x7a multiplier percent)
+      x clamp((attack+0x82 stat - hit+0xac defence) x attack+0x84 power / 100; hit+0xb0 .. hit+0xae)
+      x hit+0xb2.. resistance to element attack+0x80 (1..6) / 100 x hit+0xc4 x attack+0x88
+  attack+0x7e & 0x7f is the kind: 0x22 gives stat + power (a cure: 2d24b0 negates it), 0x2a a percentage.
+  attack+0x60 is the attacking object's entity id, +0x94 its owner's, +0x8c the command id.  The record is filled
+  from the owner's callback in `1401f3d90` (stat, power, element, multiplier 1.0 by default).
+* The hook on that call raises attack+0x88 for the length of the call and puts it back, so the bonus comes after
+  the clamp like the game's own multiplier, and the result is held to 0x7fff.  Conditions: the MP charge is
+  running, the player has the ability (`140221900`), the kind is a damaging one, and the owner (`1401d45c0(id)`,
+  the lookup 2d24b0 uses for the same question) is the player object, or its parent (+0x10) is - a spell in
+  flight - or either is of type +0x28 == 1, the player class (2 = enemies [20cc70]).
+* Texts: as MP Haste's, name message 0xfa01d9 (12 bytes of room) and description 0x320216 (97 bytes).
+* Test: `t_berserk`, the game's formula through the hook with a stand-in entity table; texts in `t_haste`.  Not
+  seen in the game by me: that the hit of a real attack carries the player as owner is read from the code, not
+  observed.
+
 ## MP cost of the D-Link-only commands (mp.c base_cost; `DLinkCostByClass`)
 
 * Reported by players: D-Link heals for 5 MP.  The fourteen commands only D-Link decks have (ids e4..f1, category

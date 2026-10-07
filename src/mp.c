@@ -47,6 +47,10 @@ static float c_atk_haste_bonus = 0.05f;/* ... and this for every Attack Haste */
 static int   c_haste_rename = 1;       /* both are shown as MP Haste, with a description of what they do here */
 static char  c_haste_name[48], c_haste_help[2][256];    /* description: [0] Magic Haste's, [1] Attack Haste's */
 static int   c_haste_name_set, c_haste_help_set;   /* given in the ini: used whatever the game's language */
+static float c_berserk_pct = 20.0f;    /* Reload Boost ("Berserker"): percent more damage dealt during MP charge (0 = off) */
+static int   c_berserk_rename = 1;
+static char  c_berserk_name[48], c_berserk_help[256];
+static int   c_berserk_name_set, c_berserk_help_set;
 static int   c_cursor_advance = 0;     /* 1 = cursor moves to the next command after a use (vanilla) */
 static int   c_ether = 1;              /* Ether-type items restore MP */
 static int   c_tiered = 1;             /* magic costs spread out by tier (see base_cost) */
@@ -122,6 +126,15 @@ static void load_ini(void) {
         char pc[16]; snprintf(pc, sizeof pc, "%g", (i ? c_atk_haste_bonus : c_haste_bonus) * 100.0f);
         snprintf(c_haste_help[i], sizeof c_haste_help[i], "Makes MP recharge %s%% faster once you have run out.\n"
                  "Multi-install the ability for an even quicker recharge.", pc);
+    }
+    c_berserk_pct = ini_f("MP", "BerserkerDamage", c_berserk_pct);
+    c_berserk_rename = (int)ini_f("MP", "BerserkerRename", (float)c_berserk_rename);
+    c_berserk_name_set = ini_s("MP", "BerserkerName", c_berserk_name, sizeof c_berserk_name);
+    c_berserk_help_set = ini_s("MP", "BerserkerHelp", c_berserk_help, sizeof c_berserk_help);
+    if (!c_berserk_name_set) snprintf(c_berserk_name, sizeof c_berserk_name, "Berserker");
+    if (!c_berserk_help_set) {
+        char pc[16]; snprintf(pc, sizeof pc, "%g", c_berserk_pct);
+        snprintf(c_berserk_help, sizeof c_berserk_help, "Increases the damage you deal by %s%% while MP is\nrecharging.", pc);
     }
     c_cursor_advance = (int)ini_f("MP", "CursorAdvance", (float)c_cursor_advance);
     c_ether = (int)ini_f("MP", "EtherRestoresMP", (float)c_ether);
@@ -632,11 +645,46 @@ static int at_save_point(u8 *cmd) {
    the texts are rewritten in the file as loaded, so every reader gets them: the name there if it fits, else
    through the name pointer; the description cut to the room the game's has (125 / 126 bytes in English).  Only
    the English texts are replaced, unless the ini gives texts of its own.  An ability whose bonus is set to 0 keeps
-   the game's texts. */
+   the game's texts.
+
+   Berserker.  The game's Reload Boost (ability 0x1d9: all reloads faster under a quarter of HP) has nothing left
+   to do either.  It is this mod's Berserker, after KH2's Berserk Charge, and does one thing: while the MP charge
+   runs, what the player deals is BerserkerDamage percent higher.  Damage is worked out in one place, 1401f9180
+   (attack record, hit record), called once [1f985a] when an attack registers on a target:
+       crit [1f90e0] x clamp((attack+0x82 stat - hit+0xac defence) x attack+0x84 power / 100, hit+0xb0, hit+0xae)
+       x hit's resistance to the attack's element / 100 x hit+0xc4 x attack+0x88
+   (attack+0x7e & 0x7f: kind; 0x22 = stat + power, a cure [2d24b0 negates it], 0x2a = a percentage).  attack+0x88
+   is a float the game itself multiplies in after the clamp; it is raised for the length of that call.  Whose
+   attack: attack+0x94 is the owner's entity id (it becomes hit+0x8c, which 1402d24b0 looks up with 1401d45c0
+   and tests the same way: the entity or its parent, +0x10, of type +0x28 == 1, the player's). */
 #define VT_CTD_READY 0x637910u          /* CRsrcCTD vtable slot 1 */
 #define FN_CTD_READY 0x112ed0u
 #define AB_ATTACK_HASTE 0x1cf
 #define AB_MAGIC_HASTE  0x1d0
+#define AB_RELOAD_BOOST 0x1d9
+#define DMG_CALL 0x1f985au
+#define DMG_FN   0x1f9180u
+#define ENTITY_BY_ID 0x1d45c0u
+static float berserk_factor(u8 *atk) {
+    if (!(c_berserk_pct > 0) || !g_burn || !atk) return 1.0f;
+    u8 *pl = player(); if (!pl) return 1.0f;
+    int n = FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_RELOAD_BOOST); if (!n) return 1.0f;
+    u32 kind = *(u16*)(atk + 0x7e) & 0x7f;
+    if (kind == 0x22 || kind == 0x2a || *(s16*)(atk + 0x84) < 1) return 1.0f;      /* cures, percentages, no damage */
+    u8 *e = FN(u8*, ENTITY_BY_ID, u32)(*(u32*)(atk + 0x94)); if (!e) return 1.0f;
+    u8 *par = *(u8**)(e + 0x10);
+    if (!(e == pl || *(int*)(e + 0x28) == 1 || (par && (par == pl || *(int*)(par + 0x28) == 1)))) return 1.0f;
+    return 1.0f + c_berserk_pct * 0.01f * (float)n;
+}
+static u32 MSABI damage_hook(u8 *atk, u8 *hit) {
+    float f = berserk_factor(atk);
+    if (f == 1.0f) return FN(u32, DMG_FN, u8*, u8*)(atk, hit);
+    float old = *(float*)(atk + 0x88);
+    *(float*)(atk + 0x88) = old * f;
+    u32 r = FN(u32, DMG_FN, u8*, u8*)(atk, hit);
+    *(float*)(atk + 0x88) = old;
+    return r > 0x7fff ? 0x7fff : r;         /* kept as a signed 16-bit number by the caller */
+}
 #define MSG_NAMES 0xfa0000u
 #define MSG_ABILITY_HELP 0x32003du
 static float charge_speed(u8 *pl) {
@@ -663,26 +711,31 @@ static int can_write(const char *p, size_t n) {
 #endif
 }
 static void haste_texts(u8 *self) {
-    static const struct { u32 id; const char *name, *help; } ab[2] = {
-        { AB_MAGIC_HASTE,  "Magic Haste",  "Shortens the reload time for all magic commands" },
-        { AB_ATTACK_HASTE, "Attack Haste", "Shortens the reload time for all attack commands" } };
+    /* the game's English texts, and what they become */
+    const struct { u32 id; const char *name, *help; int on, name_set, help_set; const char *new_name, *new_help; } ab[3] = {
+        { AB_MAGIC_HASTE,  "Magic Haste",  "Shortens the reload time for all magic commands",
+          c_haste_rename && c_haste_bonus > 0, c_haste_name_set, c_haste_help_set, c_haste_name, c_haste_help[0] },
+        { AB_ATTACK_HASTE, "Attack Haste", "Shortens the reload time for all attack commands",
+          c_haste_rename && c_atk_haste_bonus > 0, c_haste_name_set, c_haste_help_set, c_haste_name, c_haste_help[1] },
+        { AB_RELOAD_BOOST, "Reload Boost", "Shortens the reload time for all commands installed",
+          c_berserk_rename && c_berserk_pct > 0, c_berserk_name_set, c_berserk_help_set, c_berserk_name, c_berserk_help } };
     u32 first = *(u32*)(self + 0xb0);
     if (first != MSG_NAMES && first != DESC_MSG) return;
-    for (int i = 0; i < 2; i++) {
-        if (!((i ? c_atk_haste_bonus : c_haste_bonus) > 0)) continue;
+    for (int i = 0; i < 3; i++) {
+        if (!ab[i].on) continue;
         if (first == MSG_NAMES) {
             char *t = ctd_text(self, MSG_NAMES + ab[i].id);
-            if (!t || !(c_haste_name_set || !strcmp(t, ab[i].name))) continue;
-            if (strlen(c_haste_name) <= strlen(t) && can_write(t, strlen(t) + 1)) strcpy(t, c_haste_name);
-            else G(const char*, 0x814908 + ab[i].id * 0x18) = c_haste_name;
-            if (g_debug) LOG("mp: %s is named \"%s\"", ab[i].name, c_haste_name);
+            if (!t || !(ab[i].name_set || !strcmp(t, ab[i].name))) continue;
+            if (strlen(ab[i].new_name) <= strlen(t) && can_write(t, strlen(t) + 1)) strcpy(t, ab[i].new_name);
+            else G(const char*, 0x814908 + ab[i].id * 0x18) = ab[i].new_name;
+            if (g_debug) LOG("mp: %s is named \"%s\"", ab[i].name, ab[i].new_name);
         } else {
             char *t = ctd_text(self, MSG_ABILITY_HELP + ab[i].id);
-            if (!t || !(c_haste_help_set || !strncmp(t, ab[i].help, strlen(ab[i].help)))) continue;
+            if (!t || !(ab[i].help_set || !strncmp(t, ab[i].help, strlen(ab[i].help)))) continue;
             if (!can_write(t, strlen(t) + 1)) { LOG("mp: the description of %s cannot be written", ab[i].name); continue; }
-            size_t room = strlen(t), n = strlen(c_haste_help[i]);
+            size_t room = strlen(t), n = strlen(ab[i].new_help);
             if (n > room) { n = room; LOG("mp: the description of %s is cut to %u bytes", ab[i].name, (unsigned)room); }
-            memcpy(t, c_haste_help[i], n); t[n] = 0;
+            memcpy(t, ab[i].new_help, n); t[n] = 0;
         }
     }
 }
@@ -747,7 +800,8 @@ int mod_install(void) {
     if (!call_ok(0x206a6e, 0x1ce550)) { LOG("call site 206a6e does not match"); bad++; }
     if (c_desc_cost && !call_ok(DESC_CALL, MSG_FIND)) { LOG("description site does not match"); bad++; }
     if (c_floor && !call_ok(FLOOR_CALL, HAS_ABILITY)) { LOG("damage floor site does not match"); bad++; }
-    if (c_haste_rename && G(u64, VT_CTD_READY) != (u64)(g_base + FN_CTD_READY)) { LOG("message file vtable does not match"); bad++; }
+    if ((c_haste_rename || c_berserk_rename) && G(u64, VT_CTD_READY) != (u64)(g_base + FN_CTD_READY)) { LOG("message file vtable does not match"); bad++; }
+    if (c_berserk_pct > 0 && !call_ok(DMG_CALL, DMG_FN)) { LOG("damage site does not match"); bad++; }
     if (!bundle_check()) bad++;
     if (!menu_check()) bad++;
     if (!tex_check()) bad++;
@@ -763,7 +817,8 @@ int mod_install(void) {
         hook_call(FLOOR_CALL, HAS_ABILITY, floor_ability_hook, "damage floor");
         LOG("combat: EXP Zero's minimum damage applies without the ability %s", c_floor >= 2 ? "on every difficulty" : "on Critical");
     }
-    if (c_haste_rename) {
+    if (c_berserk_pct > 0) hook_call(DMG_CALL, DMG_FN, damage_hook, "damage (Berserker)");
+    if (c_haste_rename || c_berserk_rename) {
         u64 old = (u64)(g_base + FN_CTD_READY), f = (u64)ctd_ready_hook;
         o_ctd_ready = (void*)old;
         patch_bytes(VT_CTD_READY, (u8*)&old, (u8*)&f, 8, "message file ready");
@@ -840,6 +895,9 @@ void test_tick(u8 *g) { tick(g); }
 float *test_charge_seconds(void) { return &c_charge_seconds; }
 float *test_haste_bonus(int atk) { return atk ? &c_atk_haste_bonus : &c_haste_bonus; }
 const char *test_haste_help(int atk) { return c_haste_help[atk ? 1 : 0]; }
+const char *test_berserk_help(void) { return c_berserk_help; }
+float *test_berserk_pct(void) { return &c_berserk_pct; }
+u32 test_damage(u8 *atk, u8 *hit) { return damage_hook(atk, hit); }
 void test_gauge_update(u8 *g) { gauge_update_hook(g); }
 u8 *test_use(u8 *P) { return use_hook(P); }
 #endif

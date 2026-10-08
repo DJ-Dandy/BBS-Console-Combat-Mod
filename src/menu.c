@@ -920,6 +920,29 @@ static u8 *node_objs(int h, u16 node, int *count) {
     }
     return NULL;
 }
+/* the twin's colours: the frame takes the list's frame colour of the set shown (gold for set 2), the label plate a
+   shade darker as with set 1 (ShortcutHeaderPlate against ShortcutColor), the letters their own */
+static u32 hd_rgb(int slot) {
+    if (slot == 2) return c_hd_text;
+    if (!sc_page()) return slot == 0 ? c_sc_col : c_hd_plate;
+    if (slot == 0) return c_sc_col2;
+    u32 out = 0;                                /* set 1's plate / frame ratio, per channel, applied to set 2's colour */
+    for (int sh = 0; sh <= 16; sh += 8) {
+        u32 f = (c_sc_col >> sh) & 0xff, p = (c_hd_plate >> sh) & 0xff, c = (c_sc_col2 >> sh) & 0xff;
+        u32 v = f ? c * p / f : p; if (v > 0xff) v = 0xff;
+        out |= v << sh;
+    }
+    return out;
+}
+static void hd_recolour(int slot) {
+    Anim *a = &g_hd_anim[slot];
+    int nk = 0, nc = a->keyn[K_COLOR];
+    for (int k = 0; k < 11; k++) nk += a->keyn[k];
+    if (!nc || nk > HD_KEYS) return;
+    Key *dst = &g_sc_keys[HD_KEY0 + slot * HD_KEYS];
+    u32 rgb = hd_rgb(slot);
+    for (int k = nk - nc; k < nk; k++) { dst[k].v.c[0] = (u8)(rgb >> 16); dst[k].v.c[1] = (u8)(rgb >> 8); dst[k].v.c[2] = (u8)rgb; }
+}
 static void hd_node(int h, u16 node, int grey) {
     int n = 0;
     u8 *o = node_objs(h, node, &n);
@@ -931,7 +954,7 @@ static void hd_node(int h, u16 node, int grey) {
         Anim *cur = *(Anim**)(ob + 0x30);
         if (!cur) continue;
         if (cur >= g_hd_anim && cur < g_hd_anim + HD_SLOTS) {           /* our twin */
-            if (grey) continue;
+            if (grey) { hd_recolour((int)(cur - g_hd_anim)); continue; }          /* the set shown may have changed */
             *(Key**)(ob + 0x38) = gk;
             FN(void, 0x1aa7f0, u8*, Anim*)(ob, g_hd_src[cur - g_hd_anim]);
             continue;
@@ -945,7 +968,7 @@ static void hd_node(int h, u16 node, int grey) {
         if (!nc || nk > HD_KEYS) continue;
         Key *dst = &g_sc_keys[HD_KEY0 + slot * HD_KEYS];
         memcpy(dst, gk + cur->key, (size_t)nk * sizeof(Key));
-        u32 rgb = slot == 0 ? c_sc_col : slot == 1 ? c_hd_plate : c_hd_text;
+        u32 rgb = hd_rgb(slot);
         for (int k = nk - nc; k < nk; k++) { dst[k].v.c[0] = (u8)(rgb >> 16); dst[k].v.c[1] = (u8)(rgb >> 8); dst[k].v.c[2] = (u8)rgb; }
         g_hd_anim[slot] = *cur; g_hd_anim[slot].key = (u16)(HD_KEY0 + slot * HD_KEYS);
         g_hd_src[slot] = cur;

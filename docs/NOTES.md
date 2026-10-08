@@ -481,7 +481,9 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   game like the face buttons, by the same "counts where it went down" rule, and any new press flips the set (the
   menus' cursor sound, SE 1).  The set is remembered for the next time L1 is held.  A d-pad button still down
   when L1 is let go stays hidden from the game until it is let go.  The list's frame and tab (key 3 of the list's
-  own key table) take ShortcutColor2 while set 2 is shown.
+  own key table) take ShortcutColor2 while set 2 is shown, and so does the "COMMANDS" window over it (hd_rgb: its
+  frame, sprite 33, ShortcutColor2; its label plate, sprite 34, the same colour scaled by ShortcutHeaderPlate /
+  ShortcutColor per channel, a87e38 by default; the twins' colour keys are rewritten on every grey pass).
 * Menu (Command Decks > Shortcuts): while picking a slot, square (unless it is the confirm or cancel button)
   switches the set shown and edited; the plates show that set's buttons and the help line says which set it is.
   In "press a button" mode square is still a button to give.

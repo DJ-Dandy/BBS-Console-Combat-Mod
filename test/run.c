@@ -2108,6 +2108,14 @@ static void t_header(void) {
     { TKey *g = gk + orig46[6]->key + 1; CHECK(g->c[0] == 0xff && g->c[1] == 0xdc && g->c[2] == 0x00, "game's frame colour still %02x%02x%02x", g->c[0], g->c[1], g->c[2]); }
     test_hd_frame(c, 1);
     CHECK(REC(o46, 6) == fr && REC(o47, 1) == lp, "repeat passes keep the twins");
+    /* the second set of shortcuts shown: the window takes its colour as the list does (gold frame, the plate a shade darker) */
+    { extern int *test_sc_page(void);
+      *test_sc_page() = 1; test_hd_frame(c, 1);
+      TKey *kf = mine + fr->key + 1, *kp = mine + lp->key + 1, *kt = mine + lt->key + 1;
+      CHECK(REC(o46, 6) == fr && kf->c[0] == 0xc0 && kf->c[1] == 0x90 && kf->c[2] == 0x40 && kf->c[3] == 0xff, "set 2: frame %02x%02x%02x", kf->c[0], kf->c[1], kf->c[2]);
+      CHECK(kp->c[0] == 0xa8 && kp->c[1] == 0x7e && kp->c[2] == 0x38 && kt->c[0] == 0xff && kt->c[1] == 0xff, "set 2: label plate %02x%02x%02x, letters white", kp->c[0], kp->c[1], kp->c[2]);
+      *test_sc_page() = 0; test_hd_frame(c, 1);
+      CHECK(kf->c[0] == 0x80 && kf->c[1] == 0x80 && kp->c[0] == 0x70 && kp->c[2] == 0x70, "set 1 again: grey"); }
     /* the game changes the control (the window appearing: label slides in and fades in, two colour keys) */
     FN(int, 0x1a7520, int, int)(h, 1);
     CHECK(REC(o47, 1) != lp && TAB(o47, 1) == mine, "control change: the game's record is back, our table still on the object");

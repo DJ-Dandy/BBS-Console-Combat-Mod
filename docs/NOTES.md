@@ -85,8 +85,8 @@ player_command.md (command deck, plates, input, styles, D-Link).
   Test in `t_style`, both ends on the game's function (KeepStyle = 0 reproduces the report).  Not seen in the game
   by me.
 
-## Style change at three times the speed (src/speed.c, `[Speed] StyleChange`)
-- Asked for: the transition into a style in a third of the time.  The whole transition is the player's state 0x19
+## Style change at twice the speed (src/speed.c, `[Speed] StyleChange`)
+- Asked for: the transition into a style faster - a third of the time at first, then half.  The whole transition is the player's state 0x19
   (enter 28a950, update 286380); the command menu only waits for `pl+0x318 & 0x20000` to clear and then swaps the
   gauge window at once (234aa0 state 3 does not hold anything up).
 - 286380 by `pl+0x310`: with `pl+0x318 & 0x80000` first the wait for the ground, then animation 0x87 (the pose);
@@ -94,7 +94,7 @@ player_command.md (command deck, plates, input, styles, D-Link).
   state's clock) and nothing is loading, then `pl+0x354` = the style (`cmd+0x190`), animation 0x88, -> 4;
   4 = until animation 0x88 is over, then bit 0x20000 is cleared and the player is free.  The same state does the
   D-Link change (command type 7: animation 0xd3) and type 0xc.
-- So: `wanted()` gives StyleChange (3) for state 0x19 when the style is a Command Style 0x152..0x160, which the
+- So: `wanted()` gives StyleChange (2; the setter makes it 2.002 to tell it from the game's own Haste) for state 0x19 when the style is a Command Style 0x152..0x160, which the
   per-frame setter puts into `pl+0x1a8` like any other action speed, and the same frame hook adds
   dt x (factor - 1) to `pl+0x30c` in parts 1 / 3 so the 30-tick hold shrinks with it.  Loading time is the
   disk's.  Effects and sounds the change starts run at their own length.

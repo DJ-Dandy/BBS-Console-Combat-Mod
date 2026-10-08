@@ -38,7 +38,7 @@
                   then the style is set and animation 0x88 starts
           part 4  until animation 0x88 has played out
       Both animations are played StyleChange times as fast, and the clock is pushed on by the same factor, so the
-      whole change takes a third of the time at 3.  Only Command Styles (0x152..0x160): the same state also does
+      whole change takes half the time at 2.  Only Command Styles (0x152..0x160): the same state also does
       the D-Link change, which is left alone.  (The clock is not touched while the state waits for the ground,
       pl+0x318 bit 19, where it feeds the fall.) */
 #include "core.h"
@@ -59,7 +59,7 @@ static float c_airlock = 6.0f;          /* ticks without buttons after an action
 static float c_rel_fire = 0.37f, c_rel_blizzard = 0.27f, c_rel_thunder = 0.30f, c_rel_cure = 0.30f;
 static float c_free_fire = 38.0f, c_free_blizzard = 20.0f, c_free_thunder = 24.0f;
 static float c_cast_max = 2.5f;
-static float c_style = 3.0f;            /* speed of the change into a Command Style (1 = the game's own) */
+static float c_style = 2.0f;            /* speed of the change into a Command Style (1 = the game's own) */
 
 #define STICK_MOVE 0.45f                /* the game's own "moving" threshold (0x646fb8) */
 enum { K_NORMAL, K_DECK, K_ITEM, K_FRIEND, K_FINISH, K_MAGIC };

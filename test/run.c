@@ -916,7 +916,37 @@ static void t_style(void) {
       G(u32, 0x8f64930) = 0x1000; G(u32, 0x8f64934) = 0x1000; G(u32, 0x8f6493c) = 0x1000;
       test_finisher_hook(cmd);
       CHECK((*(u32*)(cmd + 0x60) & 0x4000) && *(u16*)(cmd + 0x80) == 0x12 && !*test_fin_active(), "style button: finisher fired (%x)", *(u16*)(cmd + 0x80));
-      G(u32, 0x8f64930) = 0; G(u32, 0x8f64934) = 0; G(u32, 0x8f6493c) = 0; }
+      G(u32, 0x8f64930) = 0; G(u32, 0x8f64934) = 0; G(u32, 0x8f6493c) = 0;
+      /* in a style (level 1, the gauge full at 200): a finisher offer that runs out leaves the style as it is.
+         The game's flags as its constructor sets them: 0x10 revert at an empty gauge, 0x20 revert after a finisher. */
+      { extern int *test_style_keep(void);
+        u8 *styP = calloc(1, 0x70); styP[0x30] = 4; styP[0x31] = 2; static u64 sty_cmd = 0x154; *(u64**)(styP + 0x58) = &sty_cmd;
+        *(u8**)(cmd + 0x1b8) = styP;
+        #define OFFER_OUT() do { \
+            *(u64*)(cmd + 0x80) = 0; *(int*)(cmd + 0x1a8) = 1; *(u16*)(cmd + 0x188) = 0x154; *(u16*)(cmd + 0x190) = 0x151; \
+            *(u32*)(cmd + 0x60) = 0x20000; *(u32*)(cmd + 0x64) = 0x130; finP[0x31] = 2; \
+            *(float*)(cmd + 0x130) = *(float*)(cmd + 0x138) = 200.0f; *(s16*)(cmd + 0x160) = 7; \
+            test_finisher_hook(cmd); for (int i = 0; i < 400 && *test_fin_active(); i++) test_finisher_hook(cmd); } while (0)
+        CHECK(*test_style_keep() == 1, "KeepStyle is on by default");
+        OFFER_OUT();
+        CHECK(!*test_fin_active() && !(*(u32*)(cmd + 0x60) & 0x24000), "in a style: the offer ran out, the finisher is gone (%08x)", *(u32*)(cmd + 0x60));
+        CHECK(*(int*)(cmd + 0x1a8) == 1 && *(u16*)(cmd + 0x188) == 0x154, "still in the style (level %d, style %x)", *(int*)(cmd + 0x1a8), *(u16*)(cmd + 0x188));
+        CHECK(*(float*)(cmd + 0x130) == 100.0f && *(float*)(cmd + 0x138) == 100.0f, "the gauge is where the style began (%.0f)", *(float*)(cmd + 0x130));
+        CHECK((*(u32*)(cmd + 0x64) & 0x130) == 0x30, "the game's flags are back: full gone, both reverts kept (%x)", *(u32*)(cmd + 0x64));
+        CHECK(*(s16*)(cmd + 0x160) == 0 && *(u16*)(cmd + 0x190) == 0x151, "counters cleared, no candidate: a new round");
+        /* level 2 */
+        OFFER_OUT(); *(int*)(cmd + 0x1a8) = 2; *(u8**)(cmd + 0x1c0) = styP; *(u32*)(cmd + 0x60) = 0x20000; *(u32*)(cmd + 0x64) = 0x130;
+        *(float*)(cmd + 0x130) = *(float*)(cmd + 0x138) = 300.0f; finP[0x31] = 2;
+        test_finisher_hook(cmd); for (int i = 0; i < 400 && *test_fin_active(); i++) test_finisher_hook(cmd);
+        CHECK(*(int*)(cmd + 0x1a8) == 2 && *(float*)(cmd + 0x130) == 200.0f && !(*(u32*)(cmd + 0x60) & 0x20000), "second-level style: kept too (level %d, gauge %.0f)", *(int*)(cmd + 0x1a8), *(float*)(cmd + 0x130));
+        /* KeepStyle = 0: what happened before - the game's branch for a finisher that was used takes the style away */
+        *test_style_keep() = 0; *(int*)(cmd + 0x9c) = 0; *(s16*)(cmd + 0x1ac) = 3;
+        OFFER_OUT();
+        CHECK(*(int*)(cmd + 0x1a8) == 0 && *(float*)(cmd + 0x130) == 0.0f, "KeepStyle = 0: back to the normal style, gauge empty (level %d, gauge %.0f)", *(int*)(cmd + 0x1a8), *(float*)(cmd + 0x130));
+        *test_style_keep() = 1;
+        /* a finisher that is USED still ends the style: the bit is only away for the offer's own call */
+        CHECK(*(u32*)(cmd + 0x64) & 0x20, "the revert-after-a-finisher flag is in place for a finisher that is used"); }
+      }
     printf("t_style done\n");
 }
 /* speed.c: walk-out, air weight, action speed, cast times */

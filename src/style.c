@@ -18,8 +18,13 @@
      - 236d98 is removed and the Attack plates are taken out of their "covered" state, so Attack keeps working
      - the confirm test at 234115 becomes the style button's test, so that button fires the finisher
      - the call to 233f70 at 236d67 runs a timer first; when it is out the finisher is dropped by letting the game's
-       own "the finisher is over" branch of 233f70 run (flag 0x4000 set, 0x8000 clear): gauge and style end exactly
-       as after a finisher that was used
+       own "the finisher is over" branch of 233f70 run (flag 0x4000 set, 0x8000 clear).  That branch has two ends:
+       with cmd+0x64 bit 0x20 ("revert after a finisher", set for good in the constructor) and no D-Link it goes
+       back to the normal style and an empty gauge [2371d0(cmd, 0), 237f20(cmd, 4)]; without the bit it keeps the
+       style level and puts the gauge at the bottom of that level [2371d0(cmd, level)], which is what the game
+       does for a D-Link's finisher.  A finisher that was only offered and not taken must not cost the style the
+       player is in, so in a style (level 1 or 2) the bit is taken away for that one call: the style stays, the
+       gauge is where it was when the style began.  In the normal style nothing changes: the gauge empties.
 
    The prompt is an instance of the plate layout (bc01_00 layout 7) with the style plate's look (seq 0x197 on node
    0x5a: control 0 steady, 4 the "used" flash), the style's name (node 0) and the style button's icon (the text of
@@ -47,6 +52,7 @@ extern int g_debug;
 
 static int   c_on = 1;
 static float c_seconds = 6.0f;          /* how long the offer stands */
+static int   c_keep = 1;                /* an offer that runs out leaves the player in the style he is in */
 static u32   c_bar_col = 0x8020a0ff;    /* timer bar tint: orange (style) */
 static u32   c_fin_col = 0x80ffc020;    /* ... light blue (finisher) */
 
@@ -119,11 +125,15 @@ static void MSABI finisher_hook(u8 *cmd) {
             g_fin_left -= dt;
             if (g_fin_left <= 0 && *(s16*)(cmd + 0x80) == 0) {      /* not taken: the game's "finisher is over" branch */
                 u32 keep = f60 & 0x8000;
+                u32 f64 = *(u32*)(cmd + 0x64);
+                int stay = c_keep && *(int*)(cmd + 0x1a8) > 0 && (f64 & 0x20);     /* in a style: it is not lost */
+                if (stay) *(u32*)(cmd + 0x64) = f64 & ~0x20u;
                 *(u32*)(cmd + 0x60) = (f60 | 0x4000) & ~0x8000u;
                 FN(void, 0x233f70, u8*)(cmd);
                 *(u32*)(cmd + 0x60) |= keep;
+                if (stay) *(u32*)(cmd + 0x64) |= 0x20;
                 g_fin = 0;
-                if (g_debug) LOG("finisher: not taken");
+                if (g_debug) LOG("finisher: not taken%s", stay ? ", style kept" : "");
                 return;
             }
         }
@@ -221,6 +231,7 @@ static const u8 jne_attack[6] = { 0x0f, 0x85, 0xf2, 0x00, 0x00, 0x00 };     /* 2
 int style_check(void) {
     c_on = (int)ini_f("Prompt", (float)c_on);
     c_seconds = ini_f("Seconds", c_seconds);
+    c_keep = (int)ini_f("KeepStyle", (float)c_keep);
     if (c_seconds < 0.5f) c_seconds = 0.5f;
     if (!c_on) return 1;
     if (memcmp(g_base + S_style_decide.rva, S_style_decide.bytes, S_style_decide.len) != 0) { LOG("style: site 2368f2 does not match"); return 0; }
@@ -246,4 +257,5 @@ float *test_style_left(void) { return &g_left; }
 int *test_fin_active(void) { return &g_fin; }
 float *test_fin_left(void) { return &g_fin_left; }
 void test_finisher_hook(u8 *cmd) { finisher_hook(cmd); }
+int *test_style_keep(void) { return &c_keep; }
 #endif

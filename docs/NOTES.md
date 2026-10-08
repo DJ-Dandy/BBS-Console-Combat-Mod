@@ -73,6 +73,17 @@ player_command.md (command deck, plates, input, styles, D-Link).
   deck button, 236d98 (jne that skips Attack while a finisher is available) is removed and the Attack plates are
   un-covered (205890 / 205910).  Timer out = 233f70's own "finisher over" branch (flag 0x4000 set, 0x8000 clear).
 - test/run.sh t_style drives the real hook with landing pads on its three exits, and 233f70 for the finisher.
+- **An offer that runs out does not end the style you are in (`[Style] KeepStyle`).**  Reported: in a style, the
+  next style / finisher comes up, you leave it alone, and you are back in the normal style.  Cause: the chain
+  ends in 233f70's "finisher over" branch, and that branch has two ends.  With cmd+0x64 bit 0x20 (set for good in
+  the constructor [22fe30]) and no D-Link / illusion (0x400080) it reverts: `2371d0(cmd, 0)`, next = 0x151,
+  `237f20(cmd, 4)`.  Otherwise it keeps the level: `2371d0(cmd, level)`, which only clamps the gauge to
+  level x 100 - the value a style begins with - and readies the style's plate.  Both then clear the affinity
+  counters, the candidate and the "full" flag.  For a finisher that was only offered, at level 1 or 2, the mod
+  takes bit 0x20 away for that one call and puts it back, so the game's own keep-the-level end runs.  A finisher
+  that is used still ends the style, and in the normal style an offer that runs out still empties the gauge.
+  Test in `t_style`, both ends on the game's function (KeepStyle = 0 reproduces the report).  Not seen in the game
+  by me.
 
 ## Later pieces (not built yet)
 - Attack / Magic / Items / D-Link menu (entry names: `[Menu] MagicText`, `ItemText`, `LinkText`); split deck editor (CCampDeck* classes); link list like KH2 summons.

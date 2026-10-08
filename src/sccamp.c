@@ -15,7 +15,9 @@
      - confirming it moves the hand to the Battle Commands pane, which already shows every deck slot.  Up / down
        pick a slot, confirm asks for a button: the next face button pressed becomes that slot's shortcut (its own
        button again clears it), any direction backs out.  Each plate shows the buttons of its slot where the
-       command's level normally is.  Cancel goes back to the list. */
+       command's level normally is.  Cancel goes back to the list.
+     - two sets of shortcuts (shortcut.c): while picking a slot, square shows and sets the other set, and square
+       again goes back; the help line says which set is shown. */
 #include "mod.h"
 #include <stdio.h>
 #include <string.h>
@@ -57,6 +59,7 @@ static char c_title[32] = "Shortcuts";
 
 enum { M_OFF, M_ENTRY, M_SLOTS, M_ASSIGN };     /* cursor elsewhere / on our entry / picking a slot / waiting for a button */
 static int g_mode, g_slot;
+static int g_set;                               /* the set being shown and set: 0 or 1 */
 static int g_list_h, g_item;                    /* the list's layout instance and our plate */
 static u8 *g_top;                               /* the screen, during its update */
 static int g_seen;                              /* the list's input ran during this update */
@@ -140,7 +143,7 @@ static void plates(int ours) {
                 sv->saved = 1;
             }
             char t[16]; int n = 0;
-            for (int r = 0; r < SC_ROWS; r++) if (sc_slot(r) == i) { const char *ic = sc_row_icon(r); t[n++] = ic[0]; t[n++] = ic[1]; }
+            for (int r = 0; r < SC_ROWS; r++) if (sc_slot_in(g_set, r) == i) { const char *ic = sc_row_icon(r); t[n++] = ic[0]; t[n++] = ic[1]; }
             t[n] = 0;
             L2D_ShowNode(h, N_LV, 0); L2D_ShowNode(h, N_LEVEL, 1);
             FN(int, 0x1a7ec0, int, u16, float, float)(h, N_LEVEL, ICON_X, ICON_Y);
@@ -176,10 +179,17 @@ static void help(void) {
         snprintf(t, sizeof t, "Set the shortcuts: commands used with a single button.\nHold %c%c in the field to bring them up.", 0xf5, 0x68);
         HELP_TEXT(t); break;
     case M_SLOTS:
-        snprintf(t, sizeof t, "Select a deck slot and press %c%c to give it a button.\nShortcuts follow the slot, not the command in it.", 0xf5, 0x64);
+        if (sc_sets() > 1)
+            snprintf(t, sizeof t, "Set %d: pick a deck slot and press %c%c to give it a button.\nPress %s for set %d. In battle the d-pad switches sets.",
+                     g_set + 1, 0xf5, 0x64, sc_row_icon(2), 2 - g_set);
+        else
+            snprintf(t, sizeof t, "Select a deck slot and press %c%c to give it a button.\nShortcuts follow the slot, not the command in it.", 0xf5, 0x64);
         HELP_TEXT(t); break;
     case M_ASSIGN:
-        snprintf(t, sizeof t, "Press %s %s %s or %s for this slot.\nThe slot's own button removes it. Move to go back.", sc_row_icon(1), sc_row_icon(0), sc_row_icon(2), sc_row_icon(3));
+        if (sc_sets() > 1)
+            snprintf(t, sizeof t, "Set %d: press %s %s %s or %s for this slot.\nThe slot's own button removes it. Move to go back.", g_set + 1, sc_row_icon(1), sc_row_icon(0), sc_row_icon(2), sc_row_icon(3));
+        else
+            snprintf(t, sizeof t, "Press %s %s %s or %s for this slot.\nThe slot's own button removes it. Move to go back.", sc_row_icon(1), sc_row_icon(0), sc_row_icon(2), sc_row_icon(3));
         HELP_TEXT(t); break;
     }
 }
@@ -259,12 +269,13 @@ static int MSABI list_input_hook(u8 *self) {
     } else if (g_mode == M_SLOTS) {
         int to = (move & up) ? slot_next(g_slot, -1) : (move & down) ? slot_next(g_slot, 1) : -1;
         if (to >= 0) { if (to != g_slot) { g_slot = to; slot_cursor(); } SE(1); }
+        else if (sc_sets() > 1 && (press & sc_row_mask(2)) && !(press & (ok | cancel))) { g_set ^= 1; plates(1); help(); SE(1); }   /* square: the other set */
         else if (press & ok) { g_mode = M_ASSIGN; help(); SE(2); }
         else if (press & cancel) { leave_slots(self); SE(4); }
     } else {
         u32 face = press & 0xf000u;
         if (face) {
-            for (int r = 0; r < SC_ROWS; r++) if (face & sc_row_mask(r)) { sc_assign(r, sc_slot(r) == g_slot ? -1 : g_slot); break; }
+            for (int r = 0; r < SC_ROWS; r++) if (face & sc_row_mask(r)) { sc_assign_in(g_set, r, sc_slot_in(g_set, r) == g_slot ? -1 : g_slot); break; }
             plates(1);
             g_mode = M_SLOTS; help(); SE(2);
         } else if (press & 0x00f000f0u) { g_mode = M_SLOTS; help(); SE(4); }                     /* a direction: never mind */
@@ -331,6 +342,7 @@ void sccamp_apply(void) {
 void sccamp_own(char *out, int n) { own_add(out, n, "scplate", g_item); }
 #ifndef _WIN32      /* offline test access */
 int *test_sccamp_state(void) { static int s[4]; s[0] = g_mode; s[1] = g_slot; s[2] = g_item; s[3] = g_list_h; return s; }
+int *test_sccamp_set(void) { return &g_set; }
 void test_sccamp_top(u8 *top) { g_top = top; }
 void test_sccamp_frame(u8 *top) { item_frame(top); }
 void *test_sccamp_update_hook(void) { return (void*)top_update_hook; }

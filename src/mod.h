@@ -38,14 +38,19 @@ void sccamp_own(char *out, int n);
 int  tex_hd_art_ready(void);        /* 1 once the list header words are in the command texture */
 /* shortcut.c: L1 + face button = the command in a chosen deck slot */
 #define SC_ROWS 4                   /* circle, triangle, square, cross */
+#define SC_SETS 2                   /* shortcut sets: the d-pad flips between them while the list is up */
 int  shortcut_check(void);
 void shortcut_apply(void);
 int  sc_enabled(void);
 int  sc_held(void);                 /* L1 held and the shortcut list shown this frame */
 int  sc_want(void);                 /* row of a pressed shortcut still waiting to be carried out, or -1 */
 void sc_done(void);
-int  sc_slot(int row);              /* deck slot 0..7 of that row's shortcut, -1 = none */
+int  sc_slot(int row);              /* deck slot 0..7 of that row's shortcut in the set shown, -1 = none */
 int  sc_assign(int row, int slot);
+int  sc_slot_in(int set, int row);  /* ... of a given set */
+int  sc_assign_in(int set, int row, int slot);
+int  sc_sets(void);                 /* sets in use: 1 or 2 */
+int  sc_page(void);                 /* the set shown in battle, 0 or 1 */
 u32  sc_row_mask(int row);
 const char *sc_row_icon(int row);   /* text code of the button's picture */
 void sc_set_hud(int on);

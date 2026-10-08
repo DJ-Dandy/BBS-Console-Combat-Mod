@@ -19,8 +19,9 @@ file is changed, and removing the mod puts everything back.
   recharges. Cure takes all remaining MP. Ethers and Elixirs restore MP (their descriptions say so), and starting a D-Link
   refills the bar. KH2-style MP bar under the Focus gauge; a command that would empty the bar has its name in
   yellow.
-- **Shortcuts**: hold L1 and the menu turns into four commands on the face buttons, as in KH2. Set them in the
-  pause menu under *Command Decks > Shortcuts*.
+- **Shortcuts**: hold L1 and the menu turns into four commands on the face buttons, as in KH2. There are two sets
+  of four: with the list up, the d-pad flips between them. Set them in the pause menu under *Command Decks >
+  Shortcuts* (square there switches between the two sets).
 - **Command Styles and finishers are offers**: a full gauge shows a prompt with a timer above the menu. Press the
   style button (the game's old deck-command button) to take it; Attack stays Attack meanwhile. An offer you leave
   alone never costs you the style you are in.

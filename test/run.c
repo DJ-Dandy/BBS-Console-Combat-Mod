@@ -1424,6 +1424,34 @@ static void t_shortcut(void) {
     G(u32, 0x8f64930) = PAD_L1 | 0x40; G(u32, 0x8f64934) = 0x40; G(u32, 0x8f6493c) = 0x40; test_sc_pad_frame();   /* d-pad down */ test_menu_step(cmd);
     CHECK(*cur == c0, "cursor stays");
     pad(0, 0);
+    /* two sets: the d-pad flips while the list is up; set 2 is slots 5..8 by default */
+    { extern int *test_sc_page(void); extern int sc_slot_in(int set, int row), sc_page(void);
+      CHECK(*test_sc_page() == 1, "the d-pad press just above flipped to set 2");
+      *test_sc_page() = 0; pad(0, 0);
+      CHECK(sc_slot_in(1, 0) == 4 && sc_slot_in(1, 1) == 5 && sc_slot_in(1, 2) == 6 && sc_slot_in(1, 3) == 7, "set 2 by default: slots 5..8");
+      pad(PAD_L1, PAD_L1);
+      pad(PAD_L1 | 0x20, 0x20);
+      CHECK(sc_page() == 1 && sc_slot(0) == 4 && !(G(u32, 0x8f64930) & 0x20) && !(G(u32, 0x8f64934) & 0x20) && !(G(u32, 0x8f6493c) & 0x20),
+            "d-pad right with the list up: set 2, the press kept from the game");
+      pad(PAD_L1 | 0x20, 0x20); CHECK(sc_page() == 1, "held: no second flip");
+      pad(PAD_L1, 0); pad(PAD_L1 | 0x80, 0x80); CHECK(sc_page() == 0, "left: back to set 1");
+      pad(PAD_L1, 0); pad(PAD_L1 | 0x10, 0x10); CHECK(sc_page() == 1, "up: set 2 again");
+      pad(PAD_L1, 0); pad(PAD_L1 | 0x40, 0x40); pad(PAD_L1, 0); pad(PAD_L1 | 0x40, 0x40);
+      CHECK(sc_page() == 1, "down twice: there and back");
+      /* a shortcut of set 2: circle = slot 5, Mega Flare */
+      *test_mp() = 100; *(u64*)(cmd + 0x80) = 0; for (int i = 0; i < 3; i++) frame();
+      pad(PAD_L1, 0); pad(PAD_L1 | PAD_CIR, PAD_CIR); test_menu_step(cmd);
+      CHECK(*(u16*)(cmd + 0x80) == 0xac, "circle in set 2: slot 5's command (%x)", *(u16*)(cmd + 0x80));
+      *(u64*)(cmd + 0x80) = 0;
+      CHECK(sc_assign(2, 0) == 1 && sc_slot_in(1, 2) == 0 && sc_slot_in(0, 2) == 2, "a binding made while set 2 is shown goes to set 2");
+      sc_assign_in(1, 2, 6);
+      pad(0, 0); pad(PAD_L1, PAD_L1); CHECK(sc_page() == 1, "L1 let go and held again: still set 2");
+      /* a d-pad button still down when L1 is let go is not handed to the game as a new press */
+      pad(PAD_L1 | 0x40, 0x40); CHECK(sc_page() == 0, "down: set 1");
+      pad(0x40, 0x40); CHECK(!sc_held() && !(G(u32, 0x8f64930) & 0x40) && !(G(u32, 0x8f64934) & 0x40), "L1 let go, d-pad still down: hidden from the game");
+      pad(0, 0); pad(0x40, 0x40); CHECK((G(u32, 0x8f64930) & 0x40) && (G(u32, 0x8f64934) & 0x40), "pressed again: the game's");
+      pad(0, 0); pad(0x20, 0x20); CHECK(sc_page() == 0 && (G(u32, 0x8f64934) & 0x20), "without L1 the d-pad is the game's and flips nothing");
+      pad(0, 0); }
     printf("t_shortcut done\n");
 }
 /* the shortcut list's plates on the real 2D runtime with bc01_00.l2d (BBS_PLATE_L2D) */
@@ -1839,6 +1867,20 @@ static void t_sccamp(void) {
     CHECK(ST(0) == 2 && sc_slot(1) == -1 && p3 && !strcmp(p3, "\xf5\x7b\xf5\x7c"), "its own button again: removed");
     STEP(0, 0); STEP(0x4000, 0x4000); STEP(0, 0); STEP(0x80, 0x80);
     CHECK(ST(0) == 2 && sc_slot(0) == 3 && sc_slot(2) == 2, "a direction: back without a change");
+    /* square: the second set, and square again the first */
+    {   extern int *test_sccamp_set(void); extern int sc_slot_in(int set, int row);
+        s8 *b2 = test_sc_bind() + 4; b2[0] = 4; b2[1] = 0; b2[2] = -1; b2[3] = -1;     /* set 2: circle slot 5, triangle slot 1 */
+        STEP(0, 0); STEP(PAD_SQU, PAD_SQU);
+        CHECK(ST(0) == 2 && *test_sccamp_set() == 1, "square: set 2 shown, still picking a slot");
+        const char *q0 = node_text(plate[0], 5), *q4 = node_text(plate[4], 5), *q3 = node_text(plate[3], 5);
+        CHECK(q0 && !strcmp(q0, "\xf5\x67") && q4 && !strcmp(q4, "\xf5\x7b") && q3 && !*q3, "the plates show set 2's buttons");
+        STEP(0, 0); STEP(0x4000, 0x4000); STEP(0, 0); STEP(PAD_SQU, PAD_SQU);
+        CHECK(ST(0) == 2 && sc_slot_in(1, 2) == 3 && sc_slot_in(0, 2) == 2, "square given to slot 4 in set 2; set 1 untouched");
+        q3 = node_text(plate[3], 5); CHECK(q3 && !strcmp(q3, "\xf5\x66"), "slot 4 shows it");
+        STEP(0, 0); STEP(PAD_SQU, PAD_SQU);
+        q3 = node_text(plate[3], 5);
+        CHECK(*test_sccamp_set() == 0 && q3 && !strcmp(q3, "\xf5\x7b\xf5\x7c"), "square again: set 1, as it was");
+        b2[0] = 4; b2[1] = 5; b2[2] = 6; b2[3] = 7; }
     /* cancel: back to the list, then out */
     STEP(0, 0); STEP(0x2000, 0x2000);
     CHECK(ST(0) == 1 && top[0x11] == 1 && top[0x9b] == 2, "cancel: back on the Shortcuts entry");

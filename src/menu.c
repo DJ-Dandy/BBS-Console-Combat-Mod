@@ -83,6 +83,7 @@ static char  c_text[3][24] = { "Magic", "Items", "D-Link" };     /* "D-Link" is 
 static float c_sc_icon_x = 11, c_sc_icon_y = 8;    /* centre of the button's picture: the game's own place for it */
 static float c_sc_pad = 0;                          /* extra width of the room for the picture */
 static u32   c_sc_col = 0x808080;                   /* frame and tab, RRGGBB, 80 = the texture's own grey */
+static u32   c_sc_col2 = 0xc09040;                  /* ... while the second set is shown: gold */
 static u32   c_sc_fill = 0x606060;                  /* strength of the gradient inside */
 static float c_sc_item_dx = 11;                     /* an item's bottle icon: this far right of its place on the plain plate */
 static u32   c_sc_dim = 0x404040;                   /* name of a command that cannot be used now */
@@ -138,6 +139,7 @@ static void load_ini(void) {
     c_sc_pad = ini_f("ShortcutPad", c_sc_pad); if (c_sc_pad < 0) c_sc_pad = 0; if (c_sc_pad > 30) c_sc_pad = 30;
     { char b[32];
       snprintf(b, sizeof b, "%06x", c_sc_col); ini_s("ShortcutColor", b, sizeof b); c_sc_col = (u32)strtoul(b, NULL, 16) & 0xffffff;
+      snprintf(b, sizeof b, "%06x", c_sc_col2); ini_s("ShortcutColor2", b, sizeof b); c_sc_col2 = (u32)strtoul(b, NULL, 16) & 0xffffff;
       snprintf(b, sizeof b, "%06x", c_sc_fill); ini_s("ShortcutFill", b, sizeof b); c_sc_fill = (u32)strtoul(b, NULL, 16) & 0xffffff;
       snprintf(b, sizeof b, "%06x", c_sc_dim); ini_s("ShortcutDimText", b, sizeof b); c_sc_dim = (u32)strtoul(b, NULL, 16) & 0xffffff; }
     c_hd = (int)ini_f("ShortcutHeader", (float)c_hd);
@@ -959,6 +961,10 @@ static void hd_frame(u8 *cmd, int grey) {
 }
 static void sc_frame(u8 *cmd, int show, int battle) {
     (void)battle;
+    if (show) {                             /* the frame's colour tells the two sets apart */
+        if (!g_sc_ready) sc_anims();
+        key_c(3, sc_page() ? c_sc_col2 : c_sc_col);
+    }
     for (int r = 0; r < SC_ROWS; r++) {
         l2d_live(&g_sc_entry[r]);
         int h = g_sc_entry[r];

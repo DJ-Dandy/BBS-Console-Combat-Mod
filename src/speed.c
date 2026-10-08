@@ -30,7 +30,17 @@
       0.27 / 0.60; Thunder 0.30 / 0.70; Cure goes off at 0.30.  BBS: Fire 0.33-0.43, Blizzard 0.33-0.43, Thunder
       0.33-0.50, Cure 0.60-0.73, and every spell is locked for 40 ticks (0.67 s) after it goes off.  The wind-up
       is played faster so that the release frame (PAtk t1) comes at KH2's time, never slower than the original,
-      and the lock after the release gets KH2's length per family. */
+      and the lock after the release gets KH2's length per family.
+   5. Style change.  Taking a Command Style puts the player in state 0x19 (update 286380) and nothing can be done
+      until it is over (pl+0x318 bit 17; the command menu waits for the same bit):
+          part 1  the pose, animation 0x87, while the style's files are fetched;
+          part 3  held until the state's clock pl+0x30c has reached 30 ticks (15 <= clock x 0.5) and nothing loads;
+                  then the style is set and animation 0x88 starts
+          part 4  until animation 0x88 has played out
+      Both animations are played StyleChange times as fast, and the clock is pushed on by the same factor, so the
+      whole change takes a third of the time at 3.  Only Command Styles (0x152..0x160): the same state also does
+      the D-Link change, which is left alone.  (The clock is not touched while the state waits for the ground,
+      pl+0x318 bit 19, where it feeds the fall.) */
 #include "core.h"
 #include <stdio.h>
 #include <string.h>
@@ -49,6 +59,7 @@ static float c_airlock = 6.0f;          /* ticks without buttons after an action
 static float c_rel_fire = 0.37f, c_rel_blizzard = 0.27f, c_rel_thunder = 0.30f, c_rel_cure = 0.30f;
 static float c_free_fire = 38.0f, c_free_blizzard = 20.0f, c_free_thunder = 24.0f;
 static float c_cast_max = 2.5f;
+static float c_style = 3.0f;            /* speed of the change into a Command Style (1 = the game's own) */
 
 #define STICK_MOVE 0.45f                /* the game's own "moving" threshold (0x646fb8) */
 enum { K_NORMAL, K_DECK, K_ITEM, K_FRIEND, K_FINISH, K_MAGIC };
@@ -233,8 +244,17 @@ static u64 MSABI h_hover(Ctx *c) {
 /* ---- speed ---- */
 static float g_mine;                    /* the factor this module has put into pl+0x1a8 (0 = none) */
 static float *g_lunge_div;              /* divisor of the lunge speed, 60 / factor */
+/* state 0x19 for a Command Style (not a D-Link): the style being changed to is the command menu's candidate
+   (cmd+0x190) until part 4, where it has become the player's own (pl+0x354) */
+static int style_change(u8 *pl) {
+    if (*(u16*)(pl + 0x304) != 0x19) return 0;
+    u8 *cmd = *(u8**)(pl + 0x390);
+    int id = *(s16*)(pl + 0x310) == 4 ? *(u16*)(pl + 0x354) : cmd ? *(u16*)(cmd + 0x190) : 0;
+    return id >= 0x152 && id <= 0x160;
+}
 static float wanted(u8 *pl) {
     switch (*(u16*)(pl + 0x304)) {
+    case 0x19: return style_change(pl) ? c_style : 1.0f;
     case 0x10: case 0x12: case 0x13: return c_actions;
     case 0x14: return *(u32*)(pl + 0x5e0) == 7 ? c_actions : 1.0f;
     case 0x11: {
@@ -265,6 +285,11 @@ static void speed_frame(u8 *pl) {
         put(pl, f); g_mine = f;
     }
     else if (f == 1.0f && g_mine != 0.0f) { put(pl, 1.0f); g_mine = 0.0f; }
+    /* the style change's own clock (its part 3 waits for 30 ticks of it) runs at the same pace */
+    if (g_mine != 0.0f && g_mine != 1.0f && *(u16*)(pl + 0x304) == 0x19 && *(s16*)(pl + 0x310) != 4 && !(*(u32*)(pl + 0x318) & 0x80000)) {
+        float dt = *(float*)(pl + 0x20);
+        if (dt > 0.0f && dt <= 6.0f) *(float*)(pl + 0x30c) += dt * (g_mine - 1.0f);
+    }
     if (g_lunge_div) *g_lunge_div = 60.0f / (g_mine != 0.0f ? g_mine : 1.0f);
 }
 /* 220b1d: call 23b3a0 (status effects) in the player update, after this frame's state function and before the
@@ -293,6 +318,9 @@ int speed_check(void) {
     c_rel_thunder = ini_f("ThunderRelease", c_rel_thunder); c_rel_cure = ini_f("CureRelease", c_rel_cure);
     c_free_fire = ini_f("FireFree", c_free_fire); c_free_blizzard = ini_f("BlizzardFree", c_free_blizzard);
     c_free_thunder = ini_f("ThunderFree", c_free_thunder);
+    c_style = ini_f("StyleChange", c_style);
+    if (c_style < 1.0f) c_style = 1.0f;
+    if (c_style > 6.0f) c_style = 6.0f;
     if (c_actions < 0.5f) c_actions = 0.5f;
     if (c_actions > 2.0f) c_actions = 2.0f;
     if (c_airlock < 0.0f) c_airlock = 0.0f;
@@ -337,6 +365,7 @@ void speed_apply(void) {
 
 #ifndef _WIN32      /* offline test access */
 float test_speed_wanted(u8 *pl) { return wanted(pl); }
+float *test_speed_style(void) { return &c_style; }
 void  test_speed_frame(u8 *pl) { speed_frame(pl); }
 float test_done_frame(u8 *pl, const u8 *rec, int kind) { return done_frame(pl, rec, kind); }
 int   test_leave(u8 *pl, int kind) { return leave(pl, kind); }

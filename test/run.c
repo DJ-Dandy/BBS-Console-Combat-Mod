@@ -1228,9 +1228,29 @@ static int MSABI stub_msg_find(u32 msg, const char **text, void **layout, u16 *e
     if (text) *text = stub_text;
     return msg == 0x320092 ? -1 : 1;
 }
+extern const char *test_item_desc(int id, const char *text);
 static void t_desc(void) {
     static const u16 ids[] = { 0x83 };
     world(1, ids);
+    /* the items that restore MP say so (the game's English texts, from CT00100.ctd when BBS_MSG_HELP is set) */
+    { static const struct { int id; const char *game, *mp; } it[] = {
+        { 0xbf, "Can be used once to restore a large portion of\nthe Focus Gauge.", "half of your MP" },
+        { 0xc0, "Can be used once to completely restore the\nFocus Gauge.", "your MP" },
+        { 0xc2, "Can be used once to completely restore your HP\nand the Focus Gauge. Also eliminates all negative\nstatus effects.", "HP, MP" },
+        { 0xc3, "Can be used once to completely restore HP,\nas well as the Focus and D-Link Gauges.\nAlso eliminates all negative status effects.", "HP and MP" } };
+      const char *hf = getenv("BBS_MSG_HELP"); size_t hn; u8 *help = hf ? slurp(hf, &hn) : NULL;
+      for (unsigned i = 0; i < 4; i++) {
+          const char *g = help ? ctd_find(help, 0x320000 + it[i].id) : it[i].game;
+          CHECK(g && !strcmp(g, it[i].game), "item %x: the game's text is the one expected", it[i].id);
+          const char *t = test_item_desc(it[i].id, g);
+          printf("  %x: %s\n", it[i].id, t ? t : "-");
+          int lines = 1, w = 0, m = 0; for (const char *c = t ? t : ""; *c; c++) { if (*c == '\n') { lines++; w = 0; } else if (++w > m) m = w; }
+          CHECK(t && strstr(t, it[i].mp) && strstr(t, "Focus") && lines <= 3 && m <= 54, "item %x mentions MP and still Focus; %d lines, longest %d", it[i].id, lines, m);
+          CHECK(test_desc(it[i].id, g) == NULL, "item %x: no MP cost added", it[i].id);
+      }
+      CHECK(!test_item_desc(0xbc, "Can be used once to restore a small amount of HP."), "Potion: untouched");
+      CHECK(!test_item_desc(0xc4, "Can be used once to completely restore the\nD-Link Gauge."), "Balloon Letter (no MP): untouched");
+      CHECK(!test_item_desc(0xbf, "Permet de restaurer une grande partie de la jauge."), "another language: untouched"); }
     #define GREEN "\xf9\x51"
     #define BACK  "\xf9\x41"
     const char *aero = "Call on the wind to lift enemies into the air and\nthen send them flying. Stuns some foes.";

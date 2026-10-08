@@ -279,14 +279,34 @@ static const char *desc_with_cost(int id, const char *text) {
     snprintf(g_desc + n, sizeof g_desc - n, "%s\xf9\x51%s\xf9\x41", !n ? "" : wide && lines < 3 ? "\n" : " ", cost);
     return g_desc;
 }
+/* The items that restore MP as well as Focus (item_effect_hook) say so in their descriptions.  English game text
+   only: the replacement is used when the game's text starts as expected, so another language keeps its own. */
+static const struct { u16 id; const char *was, *now; } g_item_desc[] = {
+    { 0xbf, "Can be used once to restore a large portion of",                        /* Ether: 50 % */
+      "Can be used once to restore half of your MP and a\nlarge portion of the Focus Gauge." },
+    { 0xc0, "Can be used once to completely restore the",                           /* Mega-Ether: 100 % */
+      "Can be used once to completely restore your MP\nand the Focus Gauge." },
+    { 0xc2, "Can be used once to completely restore your HP",                       /* Elixir: 100 % */
+      "Can be used once to completely restore your HP, MP\nand the Focus Gauge. Also eliminates all negative\nstatus effects." },
+    { 0xc3, "Can be used once to completely restore HP,",                           /* Megalixir: 100 % */
+      "Can be used once to completely restore HP and MP,\nas well as the Focus and D-Link Gauges.\nAlso eliminates all negative status effects." },
+};
+static const char *item_desc(int id, const char *text) {
+    if (!c_ether || !text) return NULL;
+    for (unsigned i = 0; i < sizeof g_item_desc / sizeof *g_item_desc; i++)
+        if (g_item_desc[i].id == id && !strncmp(text, g_item_desc[i].was, strlen(g_item_desc[i].was))) return g_item_desc[i].now;
+    return NULL;
+}
 static int MSABI desc_hook(u32 msg, const char **text, void **layout, u16 *extra, char flag) {
     int r = FN(int, MSG_FIND, u32, const char**, void**, u16*, char)(msg, text, layout, extra, flag);
     if (r && text && *text && msg - DESC_MSG < CMD_MAX) {
-        const char *t = desc_with_cost((int)(msg - DESC_MSG), *text);
+        const char *t = item_desc((int)(msg - DESC_MSG), *text);
+        if (!t) t = desc_with_cost((int)(msg - DESC_MSG), *text);
         if (t) *text = t;
     }
     return r;
 }
+const char *test_item_desc(int id, const char *text) { return item_desc(id, text); }
 const char *test_desc(int id, const char *text) { return desc_with_cost(id, text); }
 void *test_desc_hook(void) { return (void*)desc_hook; }
 
@@ -801,7 +821,7 @@ int mod_install(void) {
     for (unsigned i = 0; i < sizeof all / sizeof *all; i++) if (!site_ok(all[i])) { LOG("site %x does not match", all[i]->rva); bad++; }
     if (!call_ok(0x233d40, 0x2063c0)) { LOG("call site 233d40 does not match"); bad++; }
     if (!call_ok(0x206a6e, 0x1ce550)) { LOG("call site 206a6e does not match"); bad++; }
-    if (c_desc_cost && !call_ok(DESC_CALL, MSG_FIND)) { LOG("description site does not match"); bad++; }
+    if ((c_desc_cost || c_ether) && !call_ok(DESC_CALL, MSG_FIND)) { LOG("description site does not match"); bad++; }
     if (c_floor && !call_ok(FLOOR_CALL, HAS_ABILITY)) { LOG("damage floor site does not match"); bad++; }
     if ((c_haste_rename || c_berserk_rename) && G(u64, VT_CTD_READY) != (u64)(g_base + FN_CTD_READY)) { LOG("message file vtable does not match"); bad++; }
     if (c_berserk_pct > 0 && !call_ok(DMG_CALL, DMG_FN)) { LOG("damage site does not match"); bad++; }
@@ -815,7 +835,7 @@ int mod_install(void) {
     if (!sccamp_check()) bad++;
     if (!guard_check()) bad++;
     if (bad) { LOG("this is not the game build the mod was written for: nothing changed"); g_patch_errors += bad; return 0; }
-    if (c_desc_cost) hook_call(DESC_CALL, MSG_FIND, desc_hook, "description cost");
+    if (c_desc_cost || c_ether) hook_call(DESC_CALL, MSG_FIND, desc_hook, "descriptions (MP cost, MP items)");
     if (c_floor) {
         hook_call(FLOOR_CALL, HAS_ABILITY, floor_ability_hook, "damage floor");
         LOG("combat: EXP Zero's minimum damage applies without the ability %s", c_floor >= 2 ? "on every difficulty" : "on Critical");

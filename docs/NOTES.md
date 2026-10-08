@@ -162,6 +162,10 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   f1ae.. / f9ad.. = icons.  Style colours (`140127800`, ABGR, 80 = full): 0 the text's own, 1 ff000080 red,
   2 ff008000 green, 3 ff008080 yellow, 4 ff006080 orange, each multiplied by the node colour (`140122750`).
 * Test: `t_desc`.
+* The four items that restore MP as well as Focus (`EtherRestoresMP`, item_effect_hook: Ether 0xbf 50 %, Mega-Ether
+  0xc0, Elixir 0xc2, Megalixir 0xc3 100 %; Item Boost raises it as it does the heal) get descriptions that say so,
+  through the same lookup hook: messages 0x3200bf / c0 / c2 / c3, replaced only when the game's text starts as the
+  English one does.  Lines kept to 54 characters, at most three.  Test in `t_desc` against CT00100.ctd.
 
 ## MP row in the menu's character panel (src/status.c, tex.c; `[Menu] StatusMP`, `StatusMPColor`)
 

@@ -1071,31 +1071,6 @@ static void t_speed(void) {
       FR(27); CHECK(test_h_mag_lock(&c) == (u64)RVA(0x26829a) && test_fall() == p, "... from frChangeEnable: walk-out");
       CHECK(test_h_mag_anim(&c) == (u64)RVA(0x26829a), "cast animation over: the spell ends instead of idling out the lock");
       *(float*)(p + 0x1a0) = 80.0f; CHECK(test_h_mag_lock(&c) == 0 && test_h_mag_anim(&c) == 0, "long-lock spells: untouched"); }
-    /* the change into a Command Style (state 0x19) takes three quarters of the time: speed x 4/3 */
-    { extern float *test_speed_style(void);
-      u8 *c2 = calloc(1, 0x360); *(u8**)(p + 0x390) = c2;
-      *(u16*)(p + 0x304) = 0; test_speed_frame(p); *(float*)(p + 0x1a8) = 1.0f; *(float*)(wp + 0x1a8) = 1.0f; test_speed_frame(p);
-      *(u16*)(p + 0x304) = 0x19; *(s16*)(p + 0x310) = 1; *(u16*)(p + 0x354) = 0x151; *(u16*)(c2 + 0x190) = 0x154; *(u32*)(p + 0x318) = 0x20000;
-      float S = *test_speed_style();          /* 4/3 as the settings code reads it back: 1.33333 */
-      CHECK(S > 1.3333f && S < 1.3334f && test_speed_wanted(p) == S, "into a style from the normal one: x%.3f", test_speed_wanted(p));
-      *(u16*)(p + 0x354) = 0x154; *(u16*)(c2 + 0x190) = 0x15b; CHECK(test_speed_wanted(p) == S, "into a second-level style: the same");
-      *(u16*)(c2 + 0x190) = 0x163; CHECK(test_speed_wanted(p) == 1.0f, "a D-Link change in the same state, from within a style: the game's speed");
-      *(u16*)(p + 0x354) = 0x151; *(u16*)(c2 + 0x190) = 0x151; CHECK(test_speed_wanted(p) == 1.0f, "no style named: the game's speed");
-      *(s16*)(p + 0x310) = 4; *(u16*)(p + 0x354) = 0x15b; CHECK(test_speed_wanted(p) == S, "last part (the style is the player's now): the same");
-      *(u16*)(p + 0x354) = 0x170; CHECK(test_speed_wanted(p) == 1.0f, "last part of a D-Link change: the game's speed");
-      /* the state's clock: the game adds dt a frame and lets the change go on at 30; with the mod's push that is 23 frames (22.5) */
-      *(s16*)(p + 0x310) = 1; *(u16*)(p + 0x354) = 0x151; *(u16*)(c2 + 0x190) = 0x154; *(float*)(p + 0x20) = 1.0f; *(float*)(p + 0x30c) = 0;
-      int n = 0; while (*(float*)(p + 0x30c) * 0.5f < 15.0f && n < 100) { *(float*)(p + 0x30c) += 1.0f; test_speed_frame(p); n++; }
-      CHECK(n == 23 && *(float*)(p + 0x1a8) == S && *(float*)(wp + 0x1a8) == S, "the 30-tick hold is over after %d frames; animation x%.2f, weapon too", n, *(float*)(p + 0x1a8));
-      *(s16*)(p + 0x310) = 4; *(u16*)(p + 0x354) = 0x154; *(float*)(p + 0x30c) = 5; test_speed_frame(p);
-      CHECK(*(float*)(p + 0x30c) == 5.0f && *(float*)(p + 0x1a8) == S, "last part: clock left alone, animation still faster");
-      *(s16*)(p + 0x310) = 1; *(u32*)(p + 0x318) |= 0x80000; test_speed_frame(p);
-      CHECK(*(float*)(p + 0x30c) == 5.0f, "waiting for the ground: clock left alone");
-      *(u32*)(p + 0x318) = 0; *(u16*)(p + 0x304) = 1; test_speed_frame(p);
-      CHECK(*(float*)(p + 0x1a8) == 1.0f && *(float*)(wp + 0x1a8) == 1.0f, "state over: the game's speed again");
-      *test_speed_style() = 1.0f; *(u16*)(p + 0x304) = 0x19; *(u16*)(c2 + 0x190) = 0x154; *(float*)(p + 0x30c) = 0; test_speed_frame(p);
-      CHECK(*(float*)(p + 0x1a8) == 1.0f && *(float*)(p + 0x30c) == 0.0f, "StyleChange = 1: nothing touched");
-      *test_speed_style() = S; }
     printf("t_speed done\n");
 }
 /* the art block goes into the decoded gauge texture (needs BBS_GAUGE_RAW = the sheet as raw BGRA, 1024x512) */

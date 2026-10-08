@@ -23,7 +23,7 @@ file is changed, and removing the mod puts everything back.
   pause menu under *Command Decks > Shortcuts*.
 - **Command Styles and finishers are offers**: a full gauge shows a prompt with a timer above the menu. Press the
   style button (the game's old deck-command button) to take it; Attack stays Attack meanwhile. An offer you leave
-  alone never costs you the style you are in. The change into a style takes three quarters of the time.
+  alone never costs you the style you are in.
 - **Reaction prompts**: Talk, Open, Save and the like are answered with triangle and sit above the menu.
 - **Pace**: attacks, commands and items play 15 % faster; a tilted stick ends an action as soon as its last hit
   is over; after an aerial attack you fall instead of hanging; spells go off and unlock at KH2's times.

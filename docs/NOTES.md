@@ -85,21 +85,6 @@ player_command.md (command deck, plates, input, styles, D-Link).
   Test in `t_style`, both ends on the game's function (KeepStyle = 0 reproduces the report).  Not seen in the game
   by me.
 
-## Style change in three quarters of the time (src/speed.c, `[Speed] StyleChange`)
-- Asked for: the transition into a style faster - a third of the time at first, then half, then 75 %.  The whole transition is the player's state 0x19
-  (enter 28a950, update 286380); the command menu only waits for `pl+0x318 & 0x20000` to clear and then swaps the
-  gauge window at once (234aa0 state 3 does not hold anything up).
-- 286380 by `pl+0x310`: with `pl+0x318 & 0x80000` first the wait for the ground, then animation 0x87 (the pose);
-  1 = the style's files are asked for (27bf20) -> 3; 3 = held until `15 <= pl+0x30c x 0.5` (30 ticks of the
-  state's clock) and nothing is loading, then `pl+0x354` = the style (`cmd+0x190`), animation 0x88, -> 4;
-  4 = until animation 0x88 is over, then bit 0x20000 is cleared and the player is free.  The same state does the
-  D-Link change (command type 7: animation 0xd3) and type 0xc.
-- So: `wanted()` gives StyleChange (a speed: 4/3 for 75 % of the time) for state 0x19 when the style is a Command Style 0x152..0x160, which the
-  per-frame setter puts into `pl+0x1a8` like any other action speed, and the same frame hook adds
-  dt x (factor - 1) to `pl+0x30c` in parts 1 / 3 so the 30-tick hold shrinks with it.  Loading time is the
-  disk's.  Effects and sounds the change starts run at their own length.
-- Test: in `t_speed`.  Not seen in the game by me.
-
 ## Later pieces (not built yet)
 - Attack / Magic / Items / D-Link menu (entry names: `[Menu] MagicText`, `ItemText`, `LinkText`); split deck editor (CCampDeck* classes); link list like KH2 summons.
 - Style change as an optional prompt: patch point 2368f2 (see player_command.md section 8).

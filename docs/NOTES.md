@@ -422,6 +422,12 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   up is negative there) within about 2.6 m.  At the start of a hop hit, if pl+0x600 > 0 and pl+0x618 (target
   height difference, positive = above; what 229fa0 itself uses: (dy x 10 + 4) x u) >= AirReachMin: vy = max(hop,
   sqrt(2 g min(dy, AirReachMax))), at most the jump speed.  No horizontal-distance test (no field for it found).
+* Reported right after AirReach: on the ground, an enemy a little above, the player was pulled into the air.  The game
+  plays air-combo records (AERIAL, which always sets bit 23) from the ground too; its own rise (229fa0) is only
+  given when 264a10 says "in the air", so they stay down.  The hop and AirReach had no such test.  Now a hit hops
+  only if it starts in the air - pl+0x318 bit 22, which the player update sets from 264a10 after the tick hook
+  [220550 tail]; 264a10 itself is not called from the mod (it can call 292350, a landing effect) - and the
+  gravity hook applies only to the record that started hopping (g_hop_live).  Test in `t_speed`.
 * `JumpHang` (default 0, asked for): the 6-frame hold of the fall state (2633ff, the hook that already skipped it
   after actions) is skipped for every fall, so the top of a jump no longer hangs for 0.2 s.  JumpHang = 1 gives
   the game's hold back for jumps and ledges (still none after an action while AirWeight is on).

@@ -1048,7 +1048,7 @@ static void t_speed(void) {
       memset(hit, 0, 0x28); hit[4] = 0x0a; hit[0x0c] = 18; hit[0x0d] = 15; hit[0x1f] = 8;      /* Ventus' first air hit: AERIAL|EXMOVE */
       memset(fin20, 0, 0x28); fin20[4] = 0x0a; fin20[0x0c] = 29; fin20[0x0d] = 24; fin20[0x1f] = 15;
       *(float*)(p + 0x330) = 0.0049f; *(float*)(p + 0x20) = 1.0f; *(float*)(p + 0x1a8) = 1.0f;
-      *(u16*)(p + 0x304) = 0x10; *(s16*)(p + 0x310) = 5; *(u32*)(p + 0x318) = 0x800000; *(u8**)(p + 0x5b8) = hit;
+      *(u16*)(p + 0x304) = 0x10; *(s16*)(p + 0x310) = 5; *(u32*)(p + 0x318) = 0x800000 | 0x400000; *(u8**)(p + 0x5b8) = hit;
       CHECK(test_hop_hit(p), "an Attack hit in the air hops");
       memcpy(other, hit, 0x28); *(u8**)(p + 0x5b8) = other;
       other[5] = 0x20; CHECK(!test_hop_hit(p), "a FLOAT record does not");
@@ -1057,6 +1057,18 @@ static void t_speed(void) {
       other[4] = 0x08; CHECK(!test_hop_hit(p), "a record without AERIAL does not");
       *(u8**)(p + 0x5b8) = hit; *(s16*)(p + 0x310) = 3; CHECK(!test_hop_hit(p), "an attack command (part 3) does not");
       *(s16*)(p + 0x310) = 5; *(u8**)(pmgr + 0x118) = NULL; CHECK(!test_hop_hit(p), "only the local player"); *(u8**)(pmgr + 0x118) = p;
+      /* reported: on the ground, an enemy a little above - the game plays an air-combo record from the ground; it must
+         not lift the player (the game gives it no rise there) */
+      { extern const u8 **test_hop_live(void);
+        *(u16*)(p + 0x304) = 5; test_hop_frame(p); *(u16*)(p + 0x304) = 0x10;
+        *(u32*)(p + 0x318) = 0x800000; *(int*)(p + 0x600) = 1; *(float*)(p + 0x618) = 0.8f;
+        *(float*)(p + 0x50c) = 0.0f; *(float*)(p + 0x508) = g * 0.16f; FR(0); test_fall_clear();
+        test_hop_frame(p);
+        CHECK(*(float*)(p + 0x50c) == 0.0f && !*test_hop_live(), "a hit that starts on the ground: no hop, no rise (vy %.4f)", *(float*)(p + 0x50c));
+        FN(void, 0x21cb00, u8*, float, float, int)(p, 1.0f, 8.0f, 1);
+        CHECK(*(float*)(p + 0x50c) == 0.0f && *(float*)(p + 0x508) > g * 0.17f && *(float*)(p + 0x508) < g * 0.15f, "... and the game's own handling of it (vy %.4f)", *(float*)(p + 0x50c));
+        FR(3); test_hop_frame(p); CHECK(*(float*)(p + 0x50c) == 0.0f, "still nothing later in the same hit, even once in the air");
+        *(int*)(p + 0x600) = 0; *(float*)(p + 0x618) = 0.0f; *(u32*)(p + 0x318) = 0x800000 | 0x400000; }
       /* leave the attack state once (the next air hit is a first), then start the hit */
       *(u16*)(p + 0x304) = 5; test_hop_frame(p); *(u16*)(p + 0x304) = 0x10;
       *(float*)(p + 0x50c) = 0.0f; *(float*)(p + 0x508) = g * 0.16f; FR(0);

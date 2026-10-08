@@ -86,6 +86,7 @@ static float c_reach_min = 0.5f, c_reach_max = 1.9f;
 #define P_DOWN   0x0020
 #define P_FLOAT  0x2000
 static u8 *local_player(void) { u8 *m = G(u8*, 0x10f9ee40); return m ? *(u8**)(m + 0x118) : NULL; }
+static const u8 *g_hop_live;            /* the record of the hit that is hopping now (started in the air) */
 /* an Attack-button hit in the air that hops, KH2-style */
 static int hop_hit(u8 *pl) {
     if (!c_hop || !pl || pl != local_player()) return 0;
@@ -273,7 +274,7 @@ static u64 MSABI h_mag_lock(Ctx *c) {
    before frMoveEnd, 16 % gravity), r9d = mode (0 = plain gravity, 0x2000 = FLOAT record) */
 static u64 MSABI h_gravity(Ctx *c) {
     u32 mode = (u32)c->r9;
-    if (mode && !(mode & 0x2000) && hop_hit((u8*)c->rcx)) {           /* a hop: plain gravity, nothing holds it up */
+    if (mode && !(mode & 0x2000) && hop_hit((u8*)c->rcx) && g_hop_live && *(const u8**)((u8*)c->rcx + 0x5b8) == g_hop_live) {           /* a hop: plain gravity, nothing holds it up */
         u8 *pl = (u8*)c->rcx;
         float g = *(float*)(pl + 0x32c) * c_hop_grav, never = 1.0e9f;
         memcpy(c->xmm[0], &g, 4);                                       /* written to pl+0x508 at 21cb7d */
@@ -344,11 +345,18 @@ static void hop_frame(u8 *pl) {
     if (pl != local_player()) return;
     if (!hop_hit(pl)) {
         if (*(u16*)(pl + 0x304) != 0x10) g_hop_n = 0;                   /* out of the attack: the next air hit is a first */
-        g_hop_rec = NULL; return;
+        g_hop_rec = NULL; g_hop_live = NULL; return;
     }
     const u8 *rec = *(u8**)(pl + 0x5b8);
     float fr = frame_of(pl);
-    if (rec != g_hop_rec || fr + 0.5f < g_hop_fr) {                     /* a hit has started */
+    int fresh = rec != g_hop_rec || fr + 0.5f < g_hop_fr;
+    /* The game also plays air-combo records from the ground (an enemy a little above): they must not lift the player.
+       The game itself gives them no rise there (229fa0 asks 264a10, "in the air", first); only hits that start in
+       the air hop.  "In the air" here: pl+0x318 bit 22, set by the player's update when it ended airborne
+       [220550 tail] - 264a10 itself is not called, it can play a landing effect (292350). */
+    if (fresh && !(*(u32*)(pl + 0x318) & 0x400000)) { g_hop_live = NULL; g_hop_rec = rec; g_hop_fr = fr; return; }
+    if (fresh) {                                                        /* a hit has started in the air */
+        g_hop_live = rec;
         float g = -*(float*)(pl + 0x32c) * c_hop_grav, sp = *(float*)(pl + 0x1a8);
         if (!(sp > 0.05f)) sp = 1.0f;
         float v;
@@ -379,7 +387,7 @@ static void hop_frame(u8 *pl) {
 static int g_air_on; static float g_air_t, g_air_y, g_air_top;
 static void air_log(u8 *pl) {
     if (!c_airlog || pl != local_player()) return;
-    int up = FN(int, 0x264a10, u8*)(pl) != 0;
+    int up = (*(u32*)(pl + 0x318) & 0x400000) != 0;
     float dt = *(float*)(pl + 0x20); if (!(dt > 0.0f) || dt > 6.0f) dt = 1.0f;
     if (!up) {
         if (g_air_on) LOG("air: landed after %.2f s, top %.2f above the take-off, end %.2f", g_air_t / 60.0f, g_air_top, g_air_y);
@@ -487,6 +495,7 @@ int   *test_hop_on(void) { return &c_hop; }
 int   *test_jump_hang(void) { return &c_jump_hang; }
 float *test_hop_keep(void) { return &c_hop_keep; }
 int   *test_reach_on(void) { return &c_reach; }
+const u8 **test_hop_live(void) { return &g_hop_live; }
 void  test_speed_frame(u8 *pl) { speed_frame(pl); }
 float test_done_frame(u8 *pl, const u8 *rec, int kind) { return done_frame(pl, rec, kind); }
 int   test_leave(u8 *pl, int kind) { return leave(pl, kind); }

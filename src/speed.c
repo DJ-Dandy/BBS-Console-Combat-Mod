@@ -43,7 +43,11 @@
         - during the hit full gravity (x AirHopGravity), no no-sink clamp and no "rise stops at frMoveEnd": the hook
           at 21cb55 in the integrator 21cb00 goes on at 21cb7a with its own gravity in xmm0, bit 23 cleared in the
           register copy and xmm4 (frMoveEnd) out of reach.
-      The game's own pull towards a target above (229fa0: +44u) is replaced by the hop for these hits.  Everything
+      The game's own pull towards a target above (229fa0: +44u) is replaced by the hop for these hits.  In its place
+      (AirReach, after KH2's rising attack for enemies 0.5 .. 1.9 m above): when the target is at least AirReachMin
+      above (pl+0x618, the height difference the game keeps for its homing; pl+0x600 > 0 = a target), the hit
+      gets the speed that just reaches that height, sqrt(2 g dy) with dy capped at AirReachMax and the speed at
+      the character's jump - if that is more than the hop.  Once level with the target, the next hits are hops.  Everything
       else in the air (commands, styles, spells, FLOAT moves, Terra's plunge) is the game's.
    7. Air log ([Speed] AirLog = 1): every frame in the air, one line in bbskh2_log.txt - state, part, record,
       animation frame, vy, height since take-off (summed from vy), gravity - and a summary on landing.
@@ -57,6 +61,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 #include "steals_gen.h"
 #include "mod.h"
 
@@ -74,6 +79,8 @@ static float c_cast_max = 2.5f;
 static int   c_hop = 1, c_airlog = 0;
 static int   c_jump_hang = 0;           /* 1 = the game's 6-frame hang at the top of a jump (and any fall) */
 static float c_hop_keep = 0.9f, c_hop_first = 1.2f, c_hop_fin = 0.6f, c_hop_grav = 1.0f;
+static int   c_reach = 1;
+static float c_reach_min = 0.5f, c_reach_max = 1.9f;
 #define P_AERIAL 0x0002
 #define P_RISE   0x0010
 #define P_DOWN   0x0020
@@ -353,6 +360,13 @@ static void hop_frame(u8 *pl) {
             if (t > 80.0f) t = 80.0f;
             v = c_hop_keep * g * t * 0.5f * (g_hop_n == 0 ? c_hop_first : 1.0f);
         }
+        float dy = *(int*)(pl + 0x600) > 0 ? *(float*)(pl + 0x618) : 0.0f;
+        if (c_reach && dy >= c_reach_min) {                             /* the target is well above: rise to it */
+            if (dy > c_reach_max) dy = c_reach_max;
+            float vr = sqrtf(2.0f * g * dy), jump = *(float*)(pl + 0x330) * 27.6f;
+            if (vr > jump) vr = jump;
+            if (vr > v) { v = vr; if (g_debug || c_airlog) LOG("air: rising to a target %.2f above", dy); }
+        }
         if (v < 0.0f) v = 0.0f;
         *(float*)(pl + 0x50c) = v; *(float*)(pl + 0x510) = v;
         *(float*)(pl + 0x508) = *(float*)(pl + 0x32c) * c_hop_grav;
@@ -404,7 +418,9 @@ int speed_check(void) {
     c_free_fire = ini_f("FireFree", c_free_fire); c_free_blizzard = ini_f("BlizzardFree", c_free_blizzard);
     c_free_thunder = ini_f("ThunderFree", c_free_thunder);
     c_jump_hang = (int)ini_f("JumpHang", (float)c_jump_hang);
-    c_hop = (int)ini_f("AirHop", (float)c_hop); c_airlog = (int)ini_f("AirLog", (float)c_airlog);
+    c_hop = (int)ini_f("AirHop", (float)c_hop);
+    c_reach = (int)ini_f("AirReach", (float)c_reach);
+    c_reach_min = ini_f("AirReachMin", c_reach_min); c_reach_max = ini_f("AirReachMax", c_reach_max); c_airlog = (int)ini_f("AirLog", (float)c_airlog);
     c_hop_keep = ini_f("AirHopKeep", c_hop_keep); c_hop_first = ini_f("AirHopFirst", c_hop_first);
     c_hop_fin = ini_f("AirHopFinisher", c_hop_fin); c_hop_grav = ini_f("AirHopGravity", c_hop_grav);
     if (c_hop_grav < 0.1f) c_hop_grav = 0.1f;
@@ -470,6 +486,7 @@ int   test_hop_hit(u8 *pl) { return hop_hit(pl); }
 int   *test_hop_on(void) { return &c_hop; }
 int   *test_jump_hang(void) { return &c_jump_hang; }
 float *test_hop_keep(void) { return &c_hop_keep; }
+int   *test_reach_on(void) { return &c_reach; }
 void  test_speed_frame(u8 *pl) { speed_frame(pl); }
 float test_done_frame(u8 *pl, const u8 *rec, int kind) { return done_frame(pl, rec, kind); }
 int   test_leave(u8 *pl, int kind) { return leave(pl, kind); }

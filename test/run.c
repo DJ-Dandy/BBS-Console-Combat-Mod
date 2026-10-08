@@ -1092,6 +1092,23 @@ static void t_speed(void) {
       CHECK(v0 > wf - 1e-5f && v0 < wf + 1e-5f, "finisher: vy %.4f (want %.4f)", v0, wf);
       /* the same hit going on: no new hop */
       FR(2); *(float*)(p + 0x50c) = -0.03f; test_hop_frame(p); CHECK(*(float*)(p + 0x50c) == -0.03f, "the same hit, later frames: left alone");
+      /* a target well above: the hit rises to its height (KH2's rising attack), once level the hops go on */
+      { extern int *test_reach_on(void);
+        u8 *h2 = patk + 21 * 0x28; memcpy(h2, hit, 0x28);
+        #define NEWHIT(r) (FR(10), test_hop_frame(p), FR(0), *(u8**)(p + 0x5b8) = (r), test_hop_frame(p), *(float*)(p + 0x50c))
+        float plain = NEWHIT(hit);                                     /* a later hit, no target */
+        *(int*)(p + 0x600) = 1; *(float*)(p + 0x618) = 0.3f;
+        CHECK(NEWHIT(h2) == plain, "target 0.3 above (nearby): the plain hop (%.4f)", *(float*)(p + 0x50c));
+        *(float*)(p + 0x618) = 1.2f; float v = NEWHIT(hit), want = sqrtf(2.0f * 0.0049f * 1.2f);
+        CHECK(v > want - 1e-4f && v < want + 1e-4f && v > plain, "target 1.2 above: rises to it (vy %.4f, want %.4f)", v, want);
+        { float y = 0, top = 0; for (int t = 1; t <= 40; t++) { FN(void, 0x21cb00, u8*, float, float, int)(p, t * 0.5f, 8.0f, 1); y += *(float*)(p + 0x50c); if (y > top) top = y; }
+          CHECK(top > 1.1f && top < 1.3f, "... and gets there: top %.2f", top); }
+        *(float*)(p + 0x618) = 3.0f; v = NEWHIT(h2);
+        CHECK(v > 0.1351f && v < 0.1353f, "target 3 above: at most a jump's speed (%.4f)", v);
+        *(float*)(p + 0x618) = -1.0f; CHECK(NEWHIT(hit) == plain, "target below: the plain hop");
+        *(float*)(p + 0x618) = 1.2f; *(int*)(p + 0x600) = 0; CHECK(NEWHIT(h2) == plain, "no target: the plain hop");
+        *(int*)(p + 0x600) = 1; *test_reach_on() = 0; CHECK(NEWHIT(hit) == plain, "AirReach = 0: the plain hop");
+        *test_reach_on() = 1; *(int*)(p + 0x600) = 0; *(float*)(p + 0x618) = 0; }
       /* off: the game's own 16 %% */
       *test_hop_on() = 0; *(float*)(p + 0x50c) = 0.0f; test_fall_clear(); *(float*)(p + 0x508) = g * 0.16f;
       FN(void, 0x21cb00, u8*, float, float, int)(p, 2.0f, 8.0f, 1);

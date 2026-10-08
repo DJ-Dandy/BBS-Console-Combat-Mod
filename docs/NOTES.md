@@ -417,6 +417,11 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
     cleared in the register copy (no no-sink clamp), xmm4 = 1e9 so 21cc00 never zeroes a rise.  pl+0x318 keeps
     bit 23, so the game still ends the attack into the fall state.
   - Ventus' first air hit (chg 15) at speed 1: vy 0.079, up 0.6, +0.1 when the next hit can start.
+* `AirReach` (asked for, option 2 of four discussed): the lift is kept only as one rise to a target well above -
+  KH2 has a separate rising attack for enemies about 0.5 .. 1.9 m above (its plyr U MinH / MaxH -50 / -190, Y
+  up is negative there) within about 2.6 m.  At the start of a hop hit, if pl+0x600 > 0 and pl+0x618 (target
+  height difference, positive = above; what 229fa0 itself uses: (dy x 10 + 4) x u) >= AirReachMin: vy = max(hop,
+  sqrt(2 g min(dy, AirReachMax))), at most the jump speed.  No horizontal-distance test (no field for it found).
 * `JumpHang` (default 0, asked for): the 6-frame hold of the fall state (2633ff, the hook that already skipped it
   after actions) is skipped for every fall, so the top of a jump no longer hangs for 0.2 s.  JumpHang = 1 gives
   the game's hold back for jumps and ledges (still none after an action while AirWeight is on).

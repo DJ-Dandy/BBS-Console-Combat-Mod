@@ -653,8 +653,8 @@ static int at_save_point(u8 *cmd) {
    (attack record, hit record), called once [1f985a] when an attack registers on a target:
        crit [1f90e0] x clamp((attack+0x82 stat - hit+0xac defence) x attack+0x84 power / 100, hit+0xb0, hit+0xae)
        x hit's resistance to the attack's element / 100 x hit+0xc4 x attack+0x88
-   (attack+0x7e & 0x7f: kind; 0x22 = stat + power, a cure [2d24b0 negates it], 0x2a = a percentage).  attack+0x88
-   is a float the game itself multiplies in after the clamp; it is raised for the length of that call.  Whose
+   (attack+0x7e & 0x7f: kind; 0x22 = stat + power, a cure [2d24b0 negates it], 0x2a = a percentage).  The result
+   is a whole number (fractions dropped, at least 1); the bonus is added to it, rounded up.  Whose
    attack: attack+0x94 is the owner's entity id (it becomes hit+0x8c, which 1402d24b0 looks up with 1401d45c0
    and tests the same way: the entity or its parent, +0x10, of type +0x28 == 1, the player's). */
 #define VT_CTD_READY 0x637910u          /* CRsrcCTD vtable slot 1 */
@@ -665,24 +665,27 @@ static int at_save_point(u8 *cmd) {
 #define DMG_CALL 0x1f985au
 #define DMG_FN   0x1f9180u
 #define ENTITY_BY_ID 0x1d45c0u
-static float berserk_factor(u8 *atk) {
-    if (!(c_berserk_pct > 0) || !g_burn || !atk) return 1.0f;
-    u8 *pl = player(); if (!pl) return 1.0f;
-    int n = FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_RELOAD_BOOST); if (!n) return 1.0f;
+/* percent this attack's damage is raised by; 0 = not at all */
+static double berserk_pct(u8 *atk) {
+    if (!(c_berserk_pct > 0) || !g_burn || !atk) return 0;
+    u8 *pl = player(); if (!pl) return 0;
+    int n = FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_RELOAD_BOOST); if (!n) return 0;
     u32 kind = *(u16*)(atk + 0x7e) & 0x7f;
-    if (kind == 0x22 || kind == 0x2a || *(s16*)(atk + 0x84) < 1) return 1.0f;      /* cures, percentages, no damage */
-    u8 *e = FN(u8*, ENTITY_BY_ID, u32)(*(u32*)(atk + 0x94)); if (!e) return 1.0f;
+    if (kind == 0x22 || kind == 0x2a || *(s16*)(atk + 0x84) < 1) return 0;         /* cures, percentages, no damage */
+    u8 *e = FN(u8*, ENTITY_BY_ID, u32)(*(u32*)(atk + 0x94)); if (!e) return 0;
     u8 *par = *(u8**)(e + 0x10);
-    if (!(e == pl || *(int*)(e + 0x28) == 1 || (par && (par == pl || *(int*)(par + 0x28) == 1)))) return 1.0f;
-    return (1.0f + c_berserk_pct * 0.01f * (float)n) * 1.000001f;      /* 100 x 1.05 is to be 105, not 104.99999 */
+    if (!(e == pl || *(int*)(e + 0x28) == 1 || (par && (par == pl || *(int*)(par + 0x28) == 1)))) return 0;
+    return (double)c_berserk_pct * n;
 }
+/* The game works the damage out once (the critical hit is a dice roll in there) and drops the fraction.  The bonus
+   is taken of that whole number and rounded UP, so it is never lost: 2 -> 3, 19 -> 20, 20 -> 21, 21 -> 23 at 5 %. */
 static u32 MSABI damage_hook(u8 *atk, u8 *hit) {
-    float f = berserk_factor(atk);
-    if (f == 1.0f) return FN(u32, DMG_FN, u8*, u8*)(atk, hit);
-    float old = *(float*)(atk + 0x88);
-    *(float*)(atk + 0x88) = old * f;
+    double pct = berserk_pct(atk);
     u32 r = FN(u32, DMG_FN, u8*, u8*)(atk, hit);
-    *(float*)(atk + 0x88) = old;
+    if (!(pct > 0) || r == 0 || r >= 0x7fff) return r;
+    double add = ceil((double)r * pct / 100.0 - 1e-6);
+    if (add < 1) add = 1;
+    r += (u32)add;
     return r > 0x7fff ? 0x7fff : r;         /* kept as a signed 16-bit number by the caller */
 }
 #define MSG_NAMES 0xfa0000u

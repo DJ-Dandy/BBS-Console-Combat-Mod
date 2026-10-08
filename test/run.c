@@ -399,13 +399,24 @@ static void t_berserk(void) {
     CHECK(DMG(2) == 100 && DMG(4) == 100, "an enemy's attacks: %u / %u", DMG(2), DMG(4));
     CHECK(DMG(5) == 100 && DMG(0) == 100, "an owner that is not there: %u", DMG(5));
     *(float*)(atk + 0x88) = 1.5f;
-    CHECK(DMG(1) == 157 && *(float*)(atk + 0x88) == 1.5f, "on top of the game's own multiplier: 150 -> %u", DMG(1));
+    CHECK(DMG(1) == 158 && *(float*)(atk + 0x88) == 1.5f, "on top of the game's own multiplier: 150 + 7.5 rounded up = %u", DMG(1));
     *(float*)(atk + 0x88) = 1.0f;
     *(u16*)(atk + 0x7e) = 0x22; CHECK(DMG(1) == 205, "a cure (kind 22) is not raised: %u", DMG(1));
     *(u16*)(atk + 0x7e) = 0x2a; CHECK(DMG(1) == 105, "a percentage (kind 2a) is not raised: %u", DMG(1));
     *(u16*)(atk + 0x7e) = 0x80; CHECK(DMG(1) == 105, "the kind's top bit is a flag: %u", DMG(1));
-    *(s16*)(atk + 0x82) = 24; CHECK(DMG(1) == 19, "a small hit: 19 x 1.05 = 19.95, the game drops the fraction (%u)", DMG(1));
-    *(s16*)(atk + 0x82) = 25; CHECK(DMG(1) == 21, "from 20 on the bonus shows: 20 -> %u", DMG(1));
+    /* the bonus is rounded up to the next whole number */
+    { static const int want[][2] = { {1, 2}, {2, 3}, {5, 6}, {19, 20}, {20, 21}, {21, 23}, {40, 42}, {41, 44}, {100, 105} };
+      printf("  5 %% rounded up:");
+      for (unsigned i = 0; i < sizeof want / sizeof *want; i++) {
+          *(s16*)(atk + 0x82) = (s16)(want[i][0] + 5);
+          *test_burn() = 0; u32 b = DMG(1); *test_burn() = 1; u32 g = DMG(1);
+          printf(" %u->%u", b, g);
+          CHECK((int)b == want[i][0] && (int)g == want[i][1], "%d -> %u, want %d", want[i][0], g, want[i][1]);
+      }
+      printf("\n"); }
+    *(s16*)(atk + 0x84) = 1; *(s16*)(atk + 0x82) = 6; *test_burn() = 0;
+    { u32 b = DMG(1); *test_burn() = 1; CHECK(b == 1 && DMG(1) == 2, "the game's least hit, 1 (from %.2f): 1 -> %u", 0.01, DMG(1)); }
+    *(s16*)(atk + 0x84) = 100;
     *(s16*)(atk + 0x82) = 105;
     *(u16*)(atk + 0x7e) = 0;
     *(s16*)(atk + 0x82) = 30000; *(s16*)(atk + 0x84) = 200; *(s16*)(hit + 0xae) = 32000;

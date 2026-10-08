@@ -415,8 +415,10 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   reload the mod replaces).  That one was taken.  The name is "Berserker" (the request spelt it "beserker").
 * A percentage, not KH2's flat Strength: the test save is level 99 (Strength 53), where +2 would be about 4 %, and
   without the endless combo the damage is all the ability is.  20 % in the first build, 5 % on request.  The
-  game truncates damage to a whole number, so 5 % adds nothing to a hit below 20; the factor is nudged up by a
-  millionth so that 100 x 1.05 gives 105 and not 104 (1.05 is 1.0499999 as a float).
+  game truncates damage to a whole number, so 5 % as a multiplier added nothing to a hit below 20 - and basic
+  hits are about 5 to 15 for most of the game ((Strength - Defence) x power: Strength 3-4 at level 1, 11-14 at
+  20, 21-23 at 40, 49-53 at 99 from the level table 140649790; enemy Defence 3 to 15 by the wiki).  So, on
+  request, the bonus is rounded UP: the game's own whole number + ceil(that x percent / 100), at least 1.
 * Where damage is worked out: `1401f9180(attack, hit)`, called only from `1401f9790` [1f985a] when an attack
   registers on a target; the result is the hit record's +0xaa (s16), which the enemy's damage function
   `1402d24b0` then takes off its HP.
@@ -426,8 +428,9 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   attack+0x7e & 0x7f is the kind: 0x22 gives stat + power (a cure: 2d24b0 negates it), 0x2a a percentage.
   attack+0x60 is the attacking object's entity id, +0x94 its owner's, +0x8c the command id.  The record is filled
   from the owner's callback in `1401f3d90` (stat, power, element, multiplier 1.0 by default).
-* The hook on that call raises attack+0x88 for the length of the call and puts it back, so the bonus comes after
-  the clamp like the game's own multiplier, and the result is held to 0x7fff.  Conditions: the MP charge is
+* The hook on that call lets the game work the damage out (once: the critical hit is a dice roll in there), adds
+  the rounded-up bonus to the result and holds it to 0x7fff; the attack record is not touched.  (The first two
+  builds raised attack+0x88 for the length of the call instead.)  Conditions: the MP charge is
   running, the player has the ability (`140221900`), the kind is a damaging one, and the owner (`1401d45c0(id)`,
   the lookup 2d24b0 uses for the same question) is the player object, or its parent (+0x10) is - a spell in
   flight - or either is of type +0x28 == 1, the player class (2 = enemies [20cc70]).

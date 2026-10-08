@@ -1035,6 +1035,63 @@ static void t_speed(void) {
       *(u16*)(p + 0x308) = 0x10; CHECK(test_h_hover(&c) == (u64)RVA(0x26357c), "fall after an action: no hover");
       *(u16*)(p + 0x308) = 4;    CHECK(test_h_hover(&c) == 0, "fall after a jump: the game's own float at the top"); }
     CHECK(G(float, 0x26407b) == 6.0f, "button lock after an aerial action: %.0f ticks", G(float, 0x26407b));
+    /* air hops (KH2's air combo): each Attack hit in the air starts with an upward speed and keeps full gravity */
+    { extern void test_hop_frame(u8 *pl); extern int test_hop_hit(u8 *pl), *test_hop_on(void); extern float *test_hop_keep(void);
+      static u8 keep_p[0x800]; memcpy(keep_p, p, 0x800);
+      *(u8**)(pmgr + 0x118) = p;                                     /* the local player */
+      u8 *hit = patk + 17 * 0x28, *fin20 = patk + 20 * 0x28, *other = patk + 30 * 0x28;
+      memset(hit, 0, 0x28); hit[4] = 0x0a; hit[0x0c] = 18; hit[0x0d] = 15; hit[0x1f] = 8;      /* Ventus' first air hit: AERIAL|EXMOVE */
+      memset(fin20, 0, 0x28); fin20[4] = 0x0a; fin20[0x0c] = 29; fin20[0x0d] = 24; fin20[0x1f] = 15;
+      *(float*)(p + 0x330) = 0.0049f; *(float*)(p + 0x20) = 1.0f; *(float*)(p + 0x1a8) = 1.0f;
+      *(u16*)(p + 0x304) = 0x10; *(s16*)(p + 0x310) = 5; *(u32*)(p + 0x318) = 0x800000; *(u8**)(p + 0x5b8) = hit;
+      CHECK(test_hop_hit(p), "an Attack hit in the air hops");
+      memcpy(other, hit, 0x28); *(u8**)(p + 0x5b8) = other;
+      other[5] = 0x20; CHECK(!test_hop_hit(p), "a FLOAT record does not");
+      other[5] = 0; other[4] = 0x1a; CHECK(!test_hop_hit(p), "a RISE record (the launcher) does not");
+      other[4] = 0x2a; CHECK(!test_hop_hit(p), "a DOWN record (Terra's plunge) does not");
+      other[4] = 0x08; CHECK(!test_hop_hit(p), "a record without AERIAL does not");
+      *(u8**)(p + 0x5b8) = hit; *(s16*)(p + 0x310) = 3; CHECK(!test_hop_hit(p), "an attack command (part 3) does not");
+      *(s16*)(p + 0x310) = 5; *(u8**)(pmgr + 0x118) = NULL; CHECK(!test_hop_hit(p), "only the local player"); *(u8**)(pmgr + 0x118) = p;
+      /* leave the attack state once (the next air hit is a first), then start the hit */
+      *(u16*)(p + 0x304) = 5; test_hop_frame(p); *(u16*)(p + 0x304) = 0x10;
+      *(float*)(p + 0x50c) = 0.0f; *(float*)(p + 0x508) = g * 0.16f; FR(0);
+      test_hop_frame(p);
+      float want = 0.9f * 0.0049f * 30.0f * 0.5f * 1.2f, v0 = *(float*)(p + 0x50c);
+      CHECK(v0 > want - 1e-5f && v0 < want + 1e-5f && *(float*)(p + 0x508) == g, "first hit: vy %.4f (want %.4f), full gravity", v0, want);
+      /* the game's integrator with the hook: full gravity, no clamp, the rise is not cut at frMoveEnd */
+      float y = 0, top = 0, vmin = 1;
+      for (int t = 1; t <= 30; t++) {
+          FN(void, 0x21cb00, u8*, float, float, int)(p, t * 0.5f, 8.0f, 1);
+          y += *(float*)(p + 0x50c); if (y > top) top = y; if (*(float*)(p + 0x50c) < vmin) vmin = *(float*)(p + 0x50c);
+      }
+      printf("  first air hit: up %.3f, after 30 ticks %+.3f (vy %.4f)\n", top, y, *(float*)(p + 0x50c));
+      CHECK(top > 0.2f && top < 0.8f && y > -0.2f && y < 0.4f && vmin < -0.05f && (*(u32*)(p + 0x318) & 0x800000), "a hop: up %.2f, back near the start by the next hit (%+.2f)", top, y);
+      *(float*)(p + 0x50c) = 0.05f; FN(void, 0x21cb00, u8*, float, float, int)(p, 10.0f, 8.0f, 1);
+      CHECK(*(float*)(p + 0x50c) > 0.04f, "rising past frMoveEnd is not cut (vy %.4f)", *(float*)(p + 0x50c));
+      /* the next hit of the combo: no first-hit factor; with AirHopKeep 1 the height is kept */
+      FR(10); test_hop_frame(p); FR(0); *(float*)(p + 0x50c) = -0.08f;
+      *(u8**)(p + 0x5b8) = patk + 19 * 0x28; memcpy(patk + 19 * 0x28, hit, 0x28);
+      *test_hop_keep() = 1.0f; test_hop_frame(p);
+      float w2 = 0.0049f * 30.0f * 0.5f; v0 = *(float*)(p + 0x50c);
+      CHECK(v0 > w2 - 1e-5f && v0 < w2 + 1e-5f, "second hit: vy %.4f (want %.4f), whatever it was falling at", v0, w2);
+      y = 0; for (int t = 1; t <= 30; t++) { FN(void, 0x21cb00, u8*, float, float, int)(p, t * 0.5f, 8.0f, 1); y += *(float*)(p + 0x50c); }
+      CHECK(y > -0.1f && y < 0.1f, "AirHopKeep 1: back at the same height when the next hit can start (%+.3f)", y);
+      *test_hop_keep() = 0.9f;
+      /* faster animation: shorter hop */
+      FR(10); test_hop_frame(p); FR(0); *(float*)(p + 0x1a8) = 1.5f; *(u8**)(p + 0x5b8) = hit; test_hop_frame(p);
+      CHECK(*(float*)(p + 0x50c) < w2 * 0.9f / 1.4f, "animation at x1.5: a smaller hop (%.4f)", *(float*)(p + 0x50c));
+      *(float*)(p + 0x1a8) = 1.0f;
+      /* the finisher: a share of the jump speed */
+      FR(10); test_hop_frame(p); FR(0); *(u8**)(p + 0x5b8) = fin20; test_hop_frame(p);
+      float wf = 0.6f * 0.0049f * 27.6f; v0 = *(float*)(p + 0x50c);
+      CHECK(v0 > wf - 1e-5f && v0 < wf + 1e-5f, "finisher: vy %.4f (want %.4f)", v0, wf);
+      /* the same hit going on: no new hop */
+      FR(2); *(float*)(p + 0x50c) = -0.03f; test_hop_frame(p); CHECK(*(float*)(p + 0x50c) == -0.03f, "the same hit, later frames: left alone");
+      /* off: the game's own 16 %% */
+      *test_hop_on() = 0; *(float*)(p + 0x50c) = 0.0f; test_fall_clear(); *(float*)(p + 0x508) = g * 0.16f;
+      FN(void, 0x21cb00, u8*, float, float, int)(p, 2.0f, 8.0f, 1);
+      CHECK(*(float*)(p + 0x508) > g * 0.17f && *(float*)(p + 0x508) < g * 0.15f && *(float*)(p + 0x50c) == 0.0f, "AirHop = 0: the game's hold (vy %.4f, g %.5f)", *(float*)(p + 0x50c), *(float*)(p + 0x508));
+      *test_hop_on() = 1; *(u8**)(pmgr + 0x118) = NULL; memcpy(p, keep_p, 0x800); }
     /* speed factor */
     test_fall_clear(); *(u32*)(p + 0x318) = 0;
     test_speed_frame(p);

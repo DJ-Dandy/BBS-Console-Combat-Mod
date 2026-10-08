@@ -392,6 +392,37 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   link carried into another room does not come through it, so there is no refill per room.  Not when a link is
   already active.  Test in `t_use`, through the installed hook and the game's own function.
 
+## Air combat: BBS against KH2, and air hops (src/speed.c hop_hit / hop_frame / h_gravity; `[Speed] AirHop*`, `AirLog`)
+* BBS (player_actions.md 4.2, 4.3): g = -0.0049 per tick^2 (1/60 s), jump 0.135 per tick, height cap 1.75.  An
+  aerial action starts with vy = 0, bit 0x800000 and 16 % gravity; 21cb00 forbids sinking before frMoveEnd and
+  zeroes any rise from frMoveEnd on.  Every hit of an air combo starts from vy = 0 again, so a whole combo loses
+  almost no height; an EXMOVE hit with the target 4 or more above starts at +44u, faster than a jump.  After the
+  action: 6 frames of no gravity at the start of the fall, 30 ticks without buttons (the mod: AirWeight / AirLock).
+* KH2 (its own files, read from the user's install): 03system.bin > pref > plyr, Sora's entry: AttackFirstV0 8,
+  AttackComboV0 6, AttackFinishV0 12, AttackJV0 8 (forms differ, e.g. 12 / 9, 18 / 24); sstm FallMax 16; prty
+  Sora JumpHeight 185 (Valor's high jump 235 / 310 in fmab).  obj/P_EX100.mset: the motions A330 / A331 (air
+  combo hits, combo window from 22 / 20 of 60 a second) and A332 / A333 (finishers) have no "no gravity" range at
+  all; the moves A341..A346 have one for part of the move (16-24 ... 16-100).  So KH2's air combo is a hop per
+  hit with gravity on.  Its gravity is not in the data (a code constant).  Units: KH2 about cm per 1/60 s, BBS m
+  per tick; a hop of 6 is about 3.6 m/s against BBS's jump of 8.1 m/s.  (Which motions are the air combo is
+  read from their markers, not from a name table.)
+* The mod (AirHop): for Attack-button hits in the air (state 0x10 part 5, record AERIAL without RISE / DOWN /
+  FLOAT, local player only):
+  - start of a hit (tick hook 220b1d, new record or the animation frame went back): vy = AirHopKeep x g x T / 2,
+    T = frChangeEnable (0x0d, or cmb) x 2 / animation speed, clamped 8..80 ticks - the speed that is back at
+    the start height when the next hit can start; x AirHopFirst on the first air hit since the attack state was
+    entered; the finisher (is_finisher) gets AirHopFinisher x the jump speed (27.6 u) instead.  pl+0x508 = g.
+    This replaces the +44u pull of 229fa0 for these hits.
+  - every frame of such a hit (21cb55): xmm0 = g x AirHopGravity, on at 21cb7a (written to pl+0x508), bit 23
+    cleared in the register copy (no no-sink clamp), xmm4 = 1e9 so 21cc00 never zeroes a rise.  pl+0x318 keeps
+    bit 23, so the game still ends the attack into the fall state.
+  - Ventus' first air hit (chg 15) at speed 1: vy 0.079, up 0.6, +0.1 when the next hit can start.
+* AirLog = 1: a line per frame in the air (state, part, record, frame, vy, height summed from vy, gravity) and a
+  summary on landing; "air: hop" lines say what each hop got.
+* Test: in `t_speed`, on the game's integrator.  Not seen in the game by me: what the homing of [mks, mke]
+  (21b670) does to the hop, and how it feels.  Next steps if it works: cap the pull towards targets above for
+  other aerial moves, no hover at the top of a jump, finishers ending in a drop.
+
 ## Speed per command (src/speed.c cmd_override; `[CommandSpeed]`)
 * Asked for: Mega Flare a little slower, and a way to set every command by itself.  Mega Flare (0xac) was never in a
   cast-time family: it, and every spell but the four families, played at Actions (1.15) from start to end.

@@ -28,7 +28,8 @@ file is changed, and removing the mod puts everything back.
 - **Reaction prompts**: Talk, Open, Save and the like are answered with triangle and sit above the menu.
 - **Pace**: attacks, commands and items play 15 % faster (any single command can be given a speed of its own in
   `[CommandSpeed]`); a tilted stick ends an action as soon as its last hit
-  is over; after an aerial attack you fall instead of hanging; spells go off and unlock at KH2's times.
+  is over; air combos work as in KH2 (each hit is a small hop with gravity on, instead of the game switching
+  gravity off); after an aerial attack you fall instead of hanging; spells go off and unlock at KH2's times.
 - **Camera**: KH2-style field and battle camera.
 - **Revenge values**: humanoid bosses can no longer roll dice to escape on every hit. Each hit builds a hidden
   value (hit 1, magic 1.5, finisher 3, shotlock hit 0.3) and at the boss's limit he breaks out with his own

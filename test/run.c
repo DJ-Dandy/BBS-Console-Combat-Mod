@@ -1071,6 +1071,33 @@ static void t_speed(void) {
       FR(27); CHECK(test_h_mag_lock(&c) == (u64)RVA(0x26829a) && test_fall() == p, "... from frChangeEnable: walk-out");
       CHECK(test_h_mag_anim(&c) == (u64)RVA(0x26829a), "cast animation over: the spell ends instead of idling out the lock");
       *(float*)(p + 0x1a0) = 80.0f; CHECK(test_h_mag_lock(&c) == 0 && test_h_mag_anim(&c) == 0, "long-lock spells: untouched"); }
+    /* [CommandSpeed]: a speed for one command, from start to end, whatever the state; nothing else changes */
+    { extern float *test_cmd_speed(void); float *cs = test_cmd_speed();
+      for (int i = 0; i < 0x240; i++) CHECK(cs[i] == 0.0f, "nothing listed by default (%x)", i);
+      *(u16*)(p + 0x304) = 0x11; *(s16*)(p + 0x310) = 3; *(u32*)(p + 0x5e0) = 2;
+      *(u16*)(p + 0x312) = 0xac; CHECK(test_speed_wanted(p) == 1.15f, "Mega Flare, not listed: Actions (x%.2f)", test_speed_wanted(p));
+      cs[0xac] = 1.05f; CHECK(test_speed_wanted(p) == 1.05f, "listed at 1.05: x%.2f", test_speed_wanted(p));
+      *(s16*)(p + 0x310) = 4; CHECK(test_speed_wanted(p) == 1.05f, "its recovery too");
+      *(u16*)(p + 0x312) = 0xa2; CHECK(test_speed_wanted(p) == 1.15f, "Aero, not listed: still Actions");
+      *(s16*)(p + 0x310) = 3; *(u16*)(p + 0x312) = 0x8e; float k0 = test_speed_wanted(p);
+      cs[0x8e] = 1.0f; CHECK(k0 > 1.4f && test_speed_wanted(p) == 1.0f, "Thunder listed at 1: its KH2 timing (x%.2f) gives way to the game's own speed", k0);
+      *(u32*)(p + 0x5e0) = 0; *(u16*)(p + 0x312) = 0xac; CHECK(test_speed_wanted(p) != 1.05f, "no command running (category 0): the list is not used");
+      *(u16*)(p + 0x304) = 0x10; *(s16*)(p + 0x310) = 5; *(u32*)(p + 0x5e0) = 1; *(u16*)(p + 0x312) = 1;
+      CHECK(test_speed_wanted(p) == 1.15f, "the Attack combo: Actions"); cs[1] = 1.3f; CHECK(test_speed_wanted(p) == 1.3f, "Attack listed: x1.3");
+      *(u16*)(p + 0x304) = 0x15; *(u32*)(p + 0x5e0) = 4; *(u16*)(p + 0x312) = 0xfb;
+      CHECK(test_speed_wanted(p) == 1.0f, "Dodge Roll (movement), not listed: the game's speed"); cs[0xfb] = 1.5f; CHECK(test_speed_wanted(p) == 1.5f, "listed: x1.5");
+      *(u16*)(p + 0x304) = 0x18; *(u32*)(p + 0x5e0) = 9; *(u16*)(p + 0x312) = 0x11c;
+      CHECK(test_speed_wanted(p) == 1.0f, "a shotlock, not listed: the game's speed"); cs[0x11c] = 0.8f; CHECK(test_speed_wanted(p) == 0.8f, "listed slower: x0.8");
+      /* applied and taken back */
+      *(u16*)(p + 0x304) = 0; *(u32*)(p + 0x5e0) = 0; test_speed_frame(p); *(float*)(p + 0x1a8) = 1.0f; *(float*)(wp + 0x1a8) = 1.0f; test_speed_frame(p);
+      *(u16*)(p + 0x304) = 0x11; *(s16*)(p + 0x310) = 3; *(u32*)(p + 0x5e0) = 2; *(u16*)(p + 0x312) = 0xac; test_speed_frame(p);
+      CHECK(*(float*)(p + 0x1a8) == 1.05f && *(float*)(wp + 0x1a8) == 1.05f, "during Mega Flare: x%.2f, weapon too", *(float*)(p + 0x1a8));
+      *(u16*)(p + 0x304) = 1; *(u32*)(p + 0x5e0) = 0; test_speed_frame(p);
+      CHECK(*(float*)(p + 0x1a8) == 1.0f && *(float*)(wp + 0x1a8) == 1.0f, "after it: the game's speed");
+      *(u16*)(p + 0x304) = 0x11; *(u32*)(p + 0x5e0) = 2; *(float*)(p + 0x1a8) = 2.0f; test_speed_frame(p);
+      CHECK(*(float*)(p + 0x1a8) == 2.0f, "under Haste (the game's 2.0) the list does not apply");
+      *(float*)(p + 0x1a8) = 1.0f; *(u16*)(p + 0x304) = 1; *(u32*)(p + 0x5e0) = 0; test_speed_frame(p);
+      memset(cs, 0, 0x240 * sizeof *cs); }
     printf("t_speed done\n");
 }
 /* the art block goes into the decoded gauge texture (needs BBS_GAUGE_RAW = the sheet as raw BGRA, 1024x512) */

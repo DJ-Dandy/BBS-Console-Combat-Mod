@@ -392,6 +392,20 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   link carried into another room does not come through it, so there is no refill per room.  Not when a link is
   already active.  Test in `t_use`, through the installed hook and the game's own function.
 
+## Speed per command (src/speed.c cmd_override; `[CommandSpeed]`)
+* Asked for: Mega Flare a little slower, and a way to set every command by itself.  Mega Flare (0xac) was never in a
+  cast-time family: it, and every spell but the four families, played at Actions (1.15) from start to end.
+* `<id>=<speed>` in [CommandSpeed] (ids 1..0x23f, 0.25..4).  `wanted()` asks the list first: while the game says a
+  command runs (`pl+0x5e0` != 0, the category the starters set) the speed of `pl+0x312`, the running command's
+  id (21f9b0), if it is listed.  That covers every state a command runs in - 0x10 attack, 0x11 magic, 0x12 item,
+  0x13 D-Link / friend, 0x14 finisher, 0x15 movement, 0x16 guard, 0x17 counter, 0x18 shotlock - through the same
+  per-frame setter as the rest (so Haste / Slow / Stop still win and the lunge fix follows).  The list in the ini is
+  generated from the command table (type / category) and the English names (CT00500.ctd).
+* Not seen in the game by me: in particular that the Attack combo runs as id 1 (or the Command Style's own
+  attack, 2..0x10 / 0x2e) in `pl+0x312`, and that movement, guard and shotlock animations look right at other
+  speeds - parts of those are timed by the state's clock, not the animation.
+* Test: in `t_speed`.
+
 ## MP Haste (mp.c charge_speed, haste_texts; `[MP] ChargeSeconds`, `MPHasteBonus`, `MPHasteRename`)
 
 * KH2 (its 00battle.bin and the wiki): the MP charge takes 50 s / (1 + bonus); MP Haste 0.25, Hastera 0.5,

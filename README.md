@@ -26,7 +26,8 @@ file is changed, and removing the mod puts everything back.
   style button (the game's old deck-command button) to take it; Attack stays Attack meanwhile. An offer you leave
   alone never costs you the style you are in.
 - **Reaction prompts**: Talk, Open, Save and the like are answered with triangle and sit above the menu.
-- **Pace**: attacks, commands and items play 15 % faster; a tilted stick ends an action as soon as its last hit
+- **Pace**: attacks, commands and items play 15 % faster (any single command can be given a speed of its own in
+  `[CommandSpeed]`); a tilted stick ends an action as soon as its last hit
   is over; after an aerial attack you fall instead of hanging; spells go off and unlock at KH2's times.
 - **Camera**: KH2-style field and battle camera.
 - **Revenge values**: humanoid bosses can no longer roll dice to escape on every hit. Each hit builds a hidden
@@ -61,7 +62,7 @@ line gives that setting its default back.
 | `[Menu]` | the command menu: positions, texts, list headers and colours, button behaviour |
 | `[Shortcuts]` | the L1 shortcut list |
 | `[Style]` | Command Style and finisher offers |
-| `[Speed]` | action speed, walk-out, air behaviour, cast times |
+| `[Speed]`, `[CommandSpeed]` | action speed, walk-out, air behaviour, cast times; a speed for any single command |
 | `[Combat]`, `[Bundle]` | damage floor, and the camera / walk-out / revenge-value parts |
 | `[Safety]` | a 2D texture guard (on by default) |
 

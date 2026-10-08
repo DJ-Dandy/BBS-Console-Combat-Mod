@@ -30,7 +30,13 @@
       0.27 / 0.60; Thunder 0.30 / 0.70; Cure goes off at 0.30.  BBS: Fire 0.33-0.43, Blizzard 0.33-0.43, Thunder
       0.33-0.50, Cure 0.60-0.73, and every spell is locked for 40 ticks (0.67 s) after it goes off.  The wind-up
       is played faster so that the release frame (PAtk t1) comes at KH2's time, never slower than the original,
-      and the lock after the release gets KH2's length per family. */
+      and the lock after the release gets KH2's length per family.
+   5. Per command ([CommandSpeed] in the ini, "<command id in hex>=<speed>").  A command listed there is played at
+      that speed from start to end - whatever state the player is in for it (attack, magic, item, D-Link,
+      finisher, shotlock, movement, guard, counter, reaction), as long as the game says a command is running
+      (pl+0x5e0 != 0, its id in pl+0x312).  It stands in for every rule above for that command; anything not
+      listed keeps them.  The ticks-based lock after a spell's release (FireFree ...) is not an animation and
+      stays.  Haste / Slow / Stop still win, as they do over Actions. */
 #include "core.h"
 #include <stdio.h>
 #include <string.h>
@@ -49,6 +55,13 @@ static float c_airlock = 6.0f;          /* ticks without buttons after an action
 static float c_rel_fire = 0.37f, c_rel_blizzard = 0.27f, c_rel_thunder = 0.30f, c_rel_cure = 0.30f;
 static float c_free_fire = 38.0f, c_free_blizzard = 20.0f, c_free_thunder = 24.0f;
 static float c_cast_max = 2.5f;
+#define CMD_IDS 0x240
+static float g_cmd_speed[CMD_IDS];      /* [CommandSpeed]: speed of one command, 0 = not listed */
+static float cmd_override(u8 *pl) {
+    if (!*(u32*)(pl + 0x5e0)) return 0.0f;                      /* no command running */
+    u16 id = *(u16*)(pl + 0x312);
+    return id < CMD_IDS ? g_cmd_speed[id] : 0.0f;
+}
 
 #define STICK_MOVE 0.45f                /* the game's own "moving" threshold (0x646fb8) */
 enum { K_NORMAL, K_DECK, K_ITEM, K_FRIEND, K_FINISH, K_MAGIC };
@@ -234,6 +247,8 @@ static u64 MSABI h_hover(Ctx *c) {
 static float g_mine;                    /* the factor this module has put into pl+0x1a8 (0 = none) */
 static float *g_lunge_div;              /* divisor of the lunge speed, 60 / factor */
 static float wanted(u8 *pl) {
+    float o = cmd_override(pl);
+    if (o > 0.0f) return o;
     switch (*(u16*)(pl + 0x304)) {
     case 0x10: case 0x12: case 0x13: return c_actions;
     case 0x14: return *(u32*)(pl + 0x5e0) == 7 ? c_actions : 1.0f;
@@ -293,6 +308,17 @@ int speed_check(void) {
     c_rel_thunder = ini_f("ThunderRelease", c_rel_thunder); c_rel_cure = ini_f("CureRelease", c_rel_cure);
     c_free_fire = ini_f("FireFree", c_free_fire); c_free_blizzard = ini_f("BlizzardFree", c_free_blizzard);
     c_free_thunder = ini_f("ThunderFree", c_free_thunder);
+    int listed = 0;
+    for (int id = 1; id < CMD_IDS; id++) {
+        char key[8], b[32]; snprintf(key, sizeof key, "%x", id); b[0] = 0;
+        GetPrivateProfileStringA("CommandSpeed", key, "", b, sizeof b, g_ini);
+        float v = b[0] ? (float)atof(b) : 0.0f;
+        if (v > 0.0f && v < 0.25f) v = 0.25f;
+        if (v > 4.0f) v = 4.0f;
+        g_cmd_speed[id] = v > 0.0f ? v : 0.0f;
+        if (g_cmd_speed[id] > 0.0f) listed++;
+    }
+    if (listed) LOG("speed: %d commands with a speed of their own", listed);
     if (c_actions < 0.5f) c_actions = 0.5f;
     if (c_actions > 2.0f) c_actions = 2.0f;
     if (c_airlock < 0.0f) c_airlock = 0.0f;
@@ -337,6 +363,7 @@ void speed_apply(void) {
 
 #ifndef _WIN32      /* offline test access */
 float test_speed_wanted(u8 *pl) { return wanted(pl); }
+float *test_cmd_speed(void) { return g_cmd_speed; }
 void  test_speed_frame(u8 *pl) { speed_frame(pl); }
 float test_done_frame(u8 *pl, const u8 *rec, int kind) { return done_frame(pl, rec, kind); }
 int   test_leave(u8 *pl, int kind) { return leave(pl, kind); }

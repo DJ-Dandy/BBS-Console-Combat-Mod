@@ -417,6 +417,9 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
     cleared in the register copy (no no-sink clamp), xmm4 = 1e9 so 21cc00 never zeroes a rise.  pl+0x318 keeps
     bit 23, so the game still ends the attack into the fall state.
   - Ventus' first air hit (chg 15) at speed 1: vy 0.079, up 0.6, +0.1 when the next hit can start.
+* `JumpHang` (default 0, asked for): the 6-frame hold of the fall state (2633ff, the hook that already skipped it
+  after actions) is skipped for every fall, so the top of a jump no longer hangs for 0.2 s.  JumpHang = 1 gives
+  the game's hold back for jumps and ledges (still none after an action while AirWeight is on).
 * AirLog = 1: a line per frame in the air (state, part, record, frame, vy, height summed from vy, gravity) and a
   summary on landing; "air: hop" lines say what each hop got.
 * Test: in `t_speed`, on the game's integrator.  Not seen in the game by me: what the homing of [mks, mke]

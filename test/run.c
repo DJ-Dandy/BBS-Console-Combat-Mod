@@ -1033,7 +1033,12 @@ static void t_speed(void) {
     CHECK(*(float*)(p + 0x508) == g, "mode 0 (plain gravity) passes through");
     { Ctx c; memset(&c, 0, sizeof c); c.rdi = (u64)p;
       *(u16*)(p + 0x308) = 0x10; CHECK(test_h_hover(&c) == (u64)RVA(0x26357c), "fall after an action: no hover");
-      *(u16*)(p + 0x308) = 4;    CHECK(test_h_hover(&c) == 0, "fall after a jump: the game's own float at the top"); }
+      *(u16*)(p + 0x308) = 4;    CHECK(test_h_hover(&c) == (u64)RVA(0x26357c), "the top of a jump: no hang");
+      *(u16*)(p + 0x308) = 1;    CHECK(test_h_hover(&c) == (u64)RVA(0x26357c), "walking off a ledge: no hang");
+      { extern int *test_jump_hang(void); *test_jump_hang() = 1;
+        *(u16*)(p + 0x308) = 4;    CHECK(test_h_hover(&c) == 0, "JumpHang = 1: the game's own hang at the top of a jump");
+        *(u16*)(p + 0x308) = 0x10; CHECK(test_h_hover(&c) == (u64)RVA(0x26357c), "... still none after an action (AirWeight)");
+        *test_jump_hang() = 0; } }
     CHECK(G(float, 0x26407b) == 6.0f, "button lock after an aerial action: %.0f ticks", G(float, 0x26407b));
     /* air hops (KH2's air combo): each Attack hit in the air starts with an upward speed and keeps full gravity */
     { extern void test_hop_frame(u8 *pl); extern int test_hop_hit(u8 *pl), *test_hop_on(void); extern float *test_hop_keep(void);

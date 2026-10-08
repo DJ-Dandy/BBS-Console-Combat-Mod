@@ -72,6 +72,7 @@ static float c_rel_fire = 0.37f, c_rel_blizzard = 0.27f, c_rel_thunder = 0.30f, 
 static float c_free_fire = 38.0f, c_free_blizzard = 20.0f, c_free_thunder = 24.0f;
 static float c_cast_max = 2.5f;
 static int   c_hop = 1, c_airlog = 0;
+static int   c_jump_hang = 0;           /* 1 = the game's 6-frame hang at the top of a jump (and any fall) */
 static float c_hop_keep = 0.9f, c_hop_first = 1.2f, c_hop_fin = 0.6f, c_hop_grav = 1.0f;
 #define P_AERIAL 0x0002
 #define P_RISE   0x0010
@@ -281,9 +282,11 @@ static u64 MSABI h_gravity(Ctx *c) {
     }
     return (u64)(g_base + (mode ? 0x21cb5a : 0x21cb72));
 }
-/* 2633ff in the fall state: "fall loop frame >= 6 ?" (rdi = player); before that vy is held */
+/* 2633ff in the fall state: "fall loop frame >= 6 ?" (rdi = player); before that vy is held.  The same hold makes
+   the top of every jump hang for 6 animation frames (0.2 s): gone unless JumpHang = 1 (KH2's jumps do not hang). */
 static u64 MSABI h_hover(Ctx *c) {
     u16 prev = *(u16*)((u8*)c->rdi + 0x308);
+    if (!c_jump_hang) return (u64)(g_base + 0x26357c);
     return c_air && prev >= 0x10 && prev <= 0x14 ? (u64)(g_base + 0x26357c) : 0;
 }
 
@@ -400,6 +403,7 @@ int speed_check(void) {
     c_rel_thunder = ini_f("ThunderRelease", c_rel_thunder); c_rel_cure = ini_f("CureRelease", c_rel_cure);
     c_free_fire = ini_f("FireFree", c_free_fire); c_free_blizzard = ini_f("BlizzardFree", c_free_blizzard);
     c_free_thunder = ini_f("ThunderFree", c_free_thunder);
+    c_jump_hang = (int)ini_f("JumpHang", (float)c_jump_hang);
     c_hop = (int)ini_f("AirHop", (float)c_hop); c_airlog = (int)ini_f("AirLog", (float)c_airlog);
     c_hop_keep = ini_f("AirHopKeep", c_hop_keep); c_hop_first = ini_f("AirHopFirst", c_hop_first);
     c_hop_fin = ini_f("AirHopFinisher", c_hop_fin); c_hop_grav = ini_f("AirHopGravity", c_hop_grav);
@@ -464,6 +468,7 @@ float *test_cmd_speed(void) { return g_cmd_speed; }
 void  test_hop_frame(u8 *pl) { hop_frame(pl); }
 int   test_hop_hit(u8 *pl) { return hop_hit(pl); }
 int   *test_hop_on(void) { return &c_hop; }
+int   *test_jump_hang(void) { return &c_jump_hang; }
 float *test_hop_keep(void) { return &c_hop_keep; }
 void  test_speed_frame(u8 *pl) { speed_frame(pl); }
 float test_done_frame(u8 *pl, const u8 *rec, int kind) { return done_frame(pl, rec, kind); }

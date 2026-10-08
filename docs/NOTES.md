@@ -67,6 +67,9 @@ player_command.md (command deck, plates, input, styles, D-Link).
   (pad test 272c20) lets the game's own change run, timer out jumps to the finisher branch 236a82.
 - Prompt = bc01_00 layout 7 with seq 0x197 on node 0x5a (control 0 steady, 4 flash), name on node 0, button icon =
   text of node 0x5a (f5 'g' = deck button, f5 'd' = confirm).  Timer bar: hud_timer_bar in mp.c.
+  Draw priority 11 (both): under the Magic / Items / D-Link lists and their headers (12, row under the cursor 13),
+  which reach up to it when long - reported drawn over them at 12, where the later-made offer won the bucket - and
+  over the command menu (5 / 7).
 - The menu no longer draws the game's style attack plates (type 4) and finisher plate (type 3); its Attack entry
   shows the active one's name.  236c92 (extra presses of multi-press commands) also accepts the confirm button.
 - Finishers are offered the same way: 236d67 (call to 233f70) runs the timer, 234115 (its confirm test) is the old

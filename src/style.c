@@ -50,6 +50,9 @@ extern int g_debug;
 #define L2D_SetNodeText(h, n, s)          FN(int, 0x1a8330, int, u16, const char*, int, void*)(h, n, s, 0, NULL)
 #define L2D_ReplaceNodeSeq(h, n, sq, id, c) FN(int, 0x1a7fb0, int, u16, int, u16, int)(h, n, sq, id, c)
 
+/* draw priority of the offer and its timer bar: under the Magic / Items / D-Link lists and their headers (12, the row
+   under the cursor 13), which can grow tall enough to reach it, and over the command menu (5 / 7) */
+#define OFFER_PRIO 11
 static int   c_on = 1;
 static float c_seconds = 6.0f;          /* how long the offer stands */
 static int   c_keep = 1;                /* an offer that runs out leaves the player in the style he is in */
@@ -195,7 +198,7 @@ void style_frame(u8 *cmd, int hud, float x, float y) {
         g_plate = L2D_CreateLayout(file, kind == 1 ? 7 : 9, 0); g_plate_cand = 0; g_plate_kind = kind;
         if (g_plate <= 0) { g_plate = 0; return; }
         if (kind == 1) L2D_ReplaceNodeSeq(g_plate, 0x5a, sq, 0x197, 0);
-        L2D_SetPriority(g_plate, 0xc);
+        L2D_SetPriority(g_plate, OFFER_PRIO);
         L2D_SetNodeText(g_plate, kind == 1 ? 0x5a : 1, "\xf5g");    /* the style button's icon */
     }
     int h = g_plate;
@@ -219,7 +222,7 @@ void style_frame(u8 *cmd, int hud, float x, float y) {
     L2D_Show(h, hud);
     /* the plate's inside spans about x+16 .. x+100; the bar hangs just under the plate */
     float frac = g_active ? (g_total > 0 ? g_left / g_total : 0) : g_fin ? (g_fin_total > 0 ? g_fin_left / g_fin_total : 0) : -1;
-    if (frac >= 0) hud_timer_bar(&g_bar, x + 16.0f, y + 16.6f, 84.0f, 2.6f, frac, kind == 1 ? c_bar_col : c_fin_col, 0xc, hud);
+    if (frac >= 0) hud_timer_bar(&g_bar, x + 16.0f, y + 16.6f, 84.0f, 2.6f, frac, kind == 1 ? c_bar_col : c_fin_col, OFFER_PRIO, hud);
     else hud_timer_bar(&g_bar, 0, 0, 0, 0, -1, 0, 0, 0);
 }
 

@@ -62,7 +62,7 @@ line gives that setting its default back.
 | `[Style]` | Command Style and finisher offers |
 | `[Speed]` | action speed, walk-out, air behaviour, cast times |
 | `[Combat]`, `[Bundle]` | damage floor, and the camera / walk-out / revenge-value parts |
-| `[Safety]` | an optional 2D texture guard (off by default) |
+| `[Safety]` | a 2D texture guard (on by default) |
 
 Two files appear next to the game's exe while the mod is in use: `bbskh2_shortcuts.ini` (your shortcuts, per
 character) and `bbskh2_log.txt` (what the mod did at start-up, and details should the game crash). A file named

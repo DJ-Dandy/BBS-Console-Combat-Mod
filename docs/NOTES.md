@@ -598,6 +598,8 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   emptied), and `g_seen` remembers per block the image and texture objects found sound, so an unchanged node costs
   three compares and no question at all.  `TextureGuard=0` takes the draw hooks out entirely; the fix above does
   not depend on them.
+* Default history: on when written, off while the user tested the menu_shutdown fix alone (and a slight lag was
+  being looked into), on again at the user's request as a safety net.
 * Handles cannot be mistaken for one another: a freed slot's id grows by 0x400 (l2d_api.md), so a stale handle of
   ours never names a newer game instance.
 

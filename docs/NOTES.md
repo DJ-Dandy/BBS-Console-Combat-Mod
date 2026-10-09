@@ -437,6 +437,21 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   (21b670) does to the hop, and how it feels.  Next steps if it works: cap the pull towards targets above for
   other aerial moves, no hover at the top of a jump, finishers ending in a drop.
 
+## Launch height (src/speed.c h_launch; `[Speed] LaunchHeight / LaunchMin / LaunchMax`)
+* Asked for after comparing with KH2 (the user had first checked that the frequent launches happen in the unmodded
+  game too).  BBS: the Attack button's record is chosen from the combo table (pl+0x5c0, PAO_<char>Cnn.bin, 20-byte
+  entries: mode, count, PBA slot, then (type, value) conditions; type 1 = in the air, 4 = a bit of the mask below,
+  6 = same as the entry above) by 2239b0, which builds the mask from the target [21b670]: pl+0x618 = target point
+  height (a joint by default, 1d4920) - player height - PPM+0x1c (0.2 / 0.3 / 0.4), pl+0x614 horizontal distance,
+  pl+0x620 angle.  Within 3.5: bit 1 (2) if dy > 0, bit 5 (0x20) if dy < -1.5; bit 3 (8) beyond 3.5; bit 2 (4)
+  angle <= 45 deg, bit 4 (0x10) 45 .. 135 deg.  All three base tables: on the ground with bit 1 -> PBA slot 4,
+  the rising attack (16 / 301 / 582); in the air bit 1 picks another air hit (19 / 304 / 584).
+* KH2 (03system pref plyr, Sora): ground attack MinH / MaxH -100 / 40, rising attack U MinH / MaxH -190 / -50 within
+  URange 260, air -140 / 40 (cm, Y up is negative).  Not found in KH2's code which of the two wins at 50 .. 100.
+* The hook at 223b0d (ecx = mask, rbx = player, r13 = 1 in the air): on the ground and within 3.5, bit 1 =
+  LaunchMin <= dy <= LaunchMax (defaults 0.5 / 1.9, KH2's band); in the air nothing changes.  Command Style tables
+  that test bit 1 on the ground follow the same band.  Test in `t_speed` (the handler on a context).
+
 ## Speed per command (src/speed.c cmd_override; `[CommandSpeed]`)
 * Asked for: Mega Flare a little slower, and a way to set every command by itself.  Mega Flare (0xac) was never in a
   cast-time family: it, and every spell but the four families, played at Actions (1.15) from start to end.

@@ -81,6 +81,8 @@ static int   c_jump_hang = 0;           /* 1 = the game's 6-frame hang at the to
 static float c_hop_keep = 0.9f, c_hop_first = 1.2f, c_hop_fin = 0.6f, c_hop_grav = 1.0f;
 static int   c_reach = 1;
 static float c_reach_min = 0.5f, c_reach_max = 1.9f;
+static int   c_launch = 1;              /* KH2's height band for the rising attack (the launcher) */
+static float c_launch_min = 0.5f, c_launch_max = 1.9f;
 #define P_AERIAL 0x0002
 #define P_RISE   0x0010
 #define P_DOWN   0x0020
@@ -298,6 +300,22 @@ static u64 MSABI h_hover(Ctx *c) {
     return c_air && prev >= 0x10 && prev <= 0x14 ? (u64)(g_base + 0x26357c) : 0;
 }
 
+/* ---- launcher ---- */
+/* 223b0d in 2239b0, where the conditions of the combo tables are built (ecx = bits so far, rbx = player, r13 = 1 in the
+   air): bit 1 (2) = "target above" - the game sets it for any target point above the player (pl+0x618 > 0, which is
+   already less the 0.2 / 0.3 / 0.4 of PPM+0x1c) within 3.5 horizontally.  On the ground it picks the rising attack.
+   KH2 rises only to targets 50 .. 190 cm above (its plyr U MinH / MaxH): on the ground the bit is set only for
+   LaunchMin <= dy <= LaunchMax.  In the air the bit (it picks other air hits) is left as the game set it. */
+static u64 MSABI h_launch(Ctx *c) {
+    u8 *pl = (u8*)c->rbx;
+    if (!c_launch || (u32)c->r13 || *(float*)(pl + 0x614) > 3.5f) return 0;
+    float dy = *(float*)(pl + 0x618);
+    int was = (c->rcx & 2) != 0, now = dy >= c_launch_min && dy <= c_launch_max;
+    if (now) c->rcx |= 2; else c->rcx &= ~(u64)2;
+    if ((g_debug || c_airlog) && was != now) LOG("launch: target %.2f above, %s", dy, now ? "rising attack" : "ground combo");
+    return 0;
+}
+
 /* ---- speed ---- */
 static float g_mine;                    /* the factor this module has put into pl+0x1a8 (0 = none) */
 static float *g_lunge_div;              /* divisor of the lunge speed, 60 / factor */
@@ -416,7 +434,7 @@ static float ini_f(const char *key, float def) {
 }
 int speed_enabled(void) { return c_on; }
 static const Steal *const sites[] = { &S_atk_end, &S_mag_anim, &S_mag_lock, &S_deck_a, &S_deck_b, &S_deck_c, &S_item_end,
-                                      &S_friend_end, &S_fin_end, &S_fall_hover, &S_gravity };
+                                      &S_friend_end, &S_fin_end, &S_fall_hover, &S_gravity, &S_launch };
 int speed_check(void) {
     c_on = (int)ini_f("Enabled", 1);
     c_walk = (int)ini_f("WalkOut", 1); c_air = (int)ini_f("AirWeight", 1); c_lunge = (int)ini_f("LungeFix", 1);
@@ -428,6 +446,8 @@ int speed_check(void) {
     c_jump_hang = (int)ini_f("JumpHang", (float)c_jump_hang);
     c_hop = (int)ini_f("AirHop", (float)c_hop);
     c_reach = (int)ini_f("AirReach", (float)c_reach);
+    c_launch = (int)ini_f("LaunchHeight", (float)c_launch);
+    c_launch_min = ini_f("LaunchMin", c_launch_min); c_launch_max = ini_f("LaunchMax", c_launch_max);
     c_reach_min = ini_f("AirReachMin", c_reach_min); c_reach_max = ini_f("AirReachMax", c_reach_max); c_airlog = (int)ini_f("AirLog", (float)c_airlog);
     c_hop_keep = ini_f("AirHopKeep", c_hop_keep); c_hop_first = ini_f("AirHopFirst", c_hop_first);
     c_hop_fin = ini_f("AirHopFinisher", c_hop_fin); c_hop_grav = ini_f("AirHopGravity", c_hop_grav);
@@ -476,6 +496,7 @@ void speed_apply(void) {
     hook_ctx(&S_mag_lock, h_mag_lock, "magic lock");
     hook_ctx(&S_gravity, h_gravity, "air gravity");
     hook_ctx(&S_fall_hover, h_hover, "fall hover");
+    if (c_launch) hook_ctx(&S_launch, h_launch, "launch height");
     hook_call(0x220b1d, 0x23b3a0, tick_hook, "player tick");
     if (c_air && c_airlock != 30.0f) { u32 v; memcpy(&v, &c_airlock, 4); patch_u32(0x26407b, 0x41f00000, v, "air lock"); }
     if (c_lunge) {
@@ -495,6 +516,8 @@ int   *test_hop_on(void) { return &c_hop; }
 int   *test_jump_hang(void) { return &c_jump_hang; }
 float *test_hop_keep(void) { return &c_hop_keep; }
 int   *test_reach_on(void) { return &c_reach; }
+int   *test_launch_on(void) { return &c_launch; }
+u64   test_h_launch(Ctx *c) { return h_launch(c); }
 const u8 **test_hop_live(void) { return &g_hop_live; }
 void  test_speed_frame(u8 *pl) { speed_frame(pl); }
 float test_done_frame(u8 *pl, const u8 *rec, int kind) { return done_frame(pl, rec, kind); }

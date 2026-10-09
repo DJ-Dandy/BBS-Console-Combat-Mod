@@ -14,6 +14,8 @@ S=[ # (name, rva, minlen)  relocatable steals (function entries)
  ('S_deck_a',0x2246c0,8),('S_deck_b',0x224476,8),('S_deck_c',0x2253ff,8),
  ('S_item_end',0x262056,8),('S_friend_end',0x2599ab,8),('S_fin_end',0x2562bc,8),
  ('S_fall_hover',0x2633ff,6),
+ # speed.c: the combo table's conditions are built (2239b0): "target above" for the launcher
+ ('S_launch',0x223b0d,5),
  # status.c: Destroy(instance handle) of the 2D-layout runtime
  ('S_l2d_destroy',0x1a57f0,5),
 ]

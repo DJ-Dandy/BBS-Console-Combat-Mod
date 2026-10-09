@@ -9,7 +9,8 @@ file is changed, and removing the mod puts everything back.
 
 ## What it changes
 
-- **Command menu**: Attack / Magic / Items / D-Link, as in KH2. Magic, Items and D-Link open a list of what is in
+- **Command menu**: Attack / Magic / Items / D-Link, as in KH2 (D-Link with the pink heart of the game's D-Link
+  gauge as its icon). Magic, Items and D-Link open a list of what is in
   your deck, with a header and a colour of its own (Magic blue, Items green, D-Link the D-Link blue). The confirm
   button or d-pad right opens a list; the jump button closes it. After a command is used the cursor is back on
   Attack.
@@ -24,7 +25,8 @@ file is changed, and removing the mod puts everything back.
   Shortcuts* (square there switches between the two sets).
 - **Command Styles and finishers are offers**: a full gauge shows a prompt with a timer above the menu. Press the
   style button (the game's old deck-command button) to take it; Attack stays Attack meanwhile. An offer you leave
-  alone never costs you the style you are in.
+  alone never costs you the style you are in. A style taken in the air changes you there, without dropping you to
+  the ground first.
 - **Reaction prompts**: Talk, Open, Save and the like are answered with triangle and sit above the menu.
 - **Pace**: attacks, commands and items play 15 % faster (any single command can be given a speed of its own in
   `[CommandSpeed]`); a tilted stick ends an action as soon as its last hit

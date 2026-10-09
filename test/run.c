@@ -947,6 +947,16 @@ static void t_style(void) {
         /* a finisher that is USED still ends the style: the bit is only away for the offer's own call */
         CHECK(*(u32*)(cmd + 0x64) & 0x20, "the revert-after-a-finisher flag is in place for a finisher that is used"); }
       }
+    /* a Command Style starts in the air: the start (28a950) is told "on the ground"; finisher-type and other changes are not */
+    { extern int *test_style_air(void); extern u64 test_h_style_air(Ctx *c);
+      static u8 spl[0x800], scmd[0x400]; *(u8**)(spl + 0x390) = scmd; *(float*)(spl + 0x50c) = -0.1f;
+      Ctx cx; memset(&cx, 0, sizeof cx); cx.rdi = (u64)spl;
+      *(u16*)(scmd + 0x190) = 0x154; cx.rax = 1; test_h_style_air(&cx);
+      CHECK(cx.rax == 0 && *(float*)(spl + 0x50c) == 0.0f, "style change in the air: starts where the player is (rax %llx)", (unsigned long long)cx.rax);
+      *(u16*)(scmd + 0x190) = 0x163; cx.rax = 1; test_h_style_air(&cx); CHECK(cx.rax == 1, "a finisher-type change (category 7): the game's fall first");
+      *(u16*)(scmd + 0x190) = 0x154; cx.rax = 0; test_h_style_air(&cx); CHECK(cx.rax == 0, "on the ground: unchanged");
+      *test_style_air() = 0; cx.rax = 1; test_h_style_air(&cx); CHECK(cx.rax == 1, "AirChange = 0: the game's fall first");
+      *test_style_air() = 1; }
     printf("t_style done\n");
 }
 /* speed.c: walk-out, air weight, action speed, cast times */

@@ -9,6 +9,8 @@ S=[ # (name, rva, minlen)  relocatable steals (function entries)
  ('S_item_effect',0x2624e0,5),('S_pd_init',0x285780,5),
  ('S_deck_input',0x233a00,5),('S_confirm',0x272860,5),
  ('S_style_decide',0x2368f2,5),
+ # style.c: the start of a style change (28a950) asks "in the air?" (264a10) before choosing to fall first
+ ('S_style_air',0x28ac22,5),
  # speed.c: the "has this action ended?" tests of the action states, and the fall-loop hover test
  ('S_atk_end',0x2291bf,8),('S_mag_anim',0x26825f,5),('S_mag_lock',0x26828a,8),
  ('S_deck_a',0x2246c0,8),('S_deck_b',0x224476,8),('S_deck_c',0x2253ff,8),

@@ -56,6 +56,7 @@ extern int g_debug;
 static int   c_on = 1;
 static float c_seconds = 6.0f;          /* how long the offer stands */
 static int   c_keep = 1;                /* an offer that runs out leaves the player in the style he is in */
+static int   c_air_change = 1;          /* a Command Style starts in the air too, instead of after falling to the ground */
 static u32   c_bar_col = 0x8020a0ff;    /* timer bar tint: orange (style) */
 static u32   c_fin_col = 0x80ffc020;    /* ... light blue (finisher) */
 
@@ -226,6 +227,23 @@ void style_frame(u8 *cmd, int hud, float x, float y) {
     else hud_timer_bar(&g_bar, 0, 0, 0, 0, -1, 0, 0, 0);
 }
 
+/* 28ac22 in 28a950, the start of state 0x19 (style change; also finisher-type and D-Link changes): rax = 264a10,
+   "in the air", rdi = player.  In the air the game sets pl+0x318 bit 0x80000 and plays the fall loop; the update
+   (286380) then falls with gravity until landing and only there plays the change (motion 0x87).  For a Command
+   Style (category 6 of the command table) the answer is made "on the ground": the change animation starts at once,
+   and as nothing in that state moves the player vertically (1d3b90 right after zeroes the body's velocity) it plays
+   where he is.  At its end 21a490(pl, -1) asks 264a10 itself and goes to the fall state. */
+static u64 MSABI h_style_air(Ctx *c) {
+    if (!c_air_change || !(u32)c->rax) return 0;
+    u8 *pl = (u8*)c->rdi, *cmd = *(u8**)(pl + 0x390);
+    if (!cmd) return 0;
+    u16 id = *(u16*)(cmd + 0x190);
+    if (id >= 0x23a || G(u8, 0x814900 + (u32)id * 0x18) != 6) return 0;
+    c->rax = 0;
+    *(float*)(pl + 0x50c) = 0.0f; *(float*)(pl + 0x510) = 0.0f;
+    if (g_debug) LOG("style: change to %x in the air", id);
+    return 0;
+}
 static int call_ok(u32 rva, u32 target) {
     u8 *p = g_base + rva; s32 d; memcpy(&d, p + 1, 4);
     return p[0] == 0xE8 && (u32)(rva + 5 + d) == target;
@@ -235,7 +253,9 @@ int style_check(void) {
     c_on = (int)ini_f("Prompt", (float)c_on);
     c_seconds = ini_f("Seconds", c_seconds);
     c_keep = (int)ini_f("KeepStyle", (float)c_keep);
+    c_air_change = (int)ini_f("AirChange", (float)c_air_change);
     if (c_seconds < 0.5f) c_seconds = 0.5f;
+    if (c_air_change && memcmp(g_base + S_style_air.rva, S_style_air.bytes, S_style_air.len) != 0) { LOG("style: site 28ac22 does not match"); c_air_change = 0; }
     if (!c_on) return 1;
     if (memcmp(g_base + S_style_decide.rva, S_style_decide.bytes, S_style_decide.len) != 0) { LOG("style: site 2368f2 does not match"); return 0; }
     if (!call_ok(0x236d67, 0x233f70) || !call_ok(0x234115, 0x272860) || memcmp(g_base + 0x236d98, jne_attack, 6) != 0) {
@@ -244,6 +264,7 @@ int style_check(void) {
     return 1;
 }
 void style_apply(void) {
+    if (c_air_change) hook_ctx(&S_style_air, h_style_air, "style change in the air");
     if (!c_on) { LOG("style prompt: off"); return; }
     static const u8 nops[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
     hook_ctx(&S_style_decide, style_decide, "style_decide");
@@ -261,4 +282,6 @@ int *test_fin_active(void) { return &g_fin; }
 float *test_fin_left(void) { return &g_fin_left; }
 void test_finisher_hook(u8 *cmd) { finisher_hook(cmd); }
 int *test_style_keep(void) { return &c_keep; }
+int *test_style_air(void) { return &c_air_change; }
+u64 test_h_style_air(Ctx *c) { return h_style_air(c); }
 #endif

@@ -462,6 +462,24 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   the entity's position (its feet / origin) stands in for it.  In the air nothing changes.  Command Style tables that
   test bit 1 on the ground follow the same rule.  Test in `t_speed` (the handler on a context with fake entities).
 
+## D-Link entry icon (menu.c link_icon; `[Menu] DLinkIcon / DLinkIconX / DLinkIconY`)
+* The entries' icons are sequences of bc01_00 on node 0x5a of the deck plate (layout 3): 0x20 keyblade, 0x21 hat,
+  0x22 bottle (control 3 the still one), the D-Link entry had none.  The hearts are sequence 0x2e (the D-Link gauge's):
+  control 0 the pink heart (sprite 61, texture 362,90..390,118, 14 x 14 at (0,0)), 1 / 3 the grey one (sprite 62),
+  2 / 4 pink 10 to the left.  Its sprite sits at the node's origin where the other sequences put theirs around
+  (104, 10), so the node is moved by (97, 3) (1a7ec0 -> the node's +0x58 method), and node 0x5a is put back on
+  control 0 every frame (the plate's set_control sets every node's control; 1 / 3 would be the grey heart).
+  Asked for: the pink one always, also when the entry cannot be used (the other icons do not grey out either).
+
+## Command Style in the air (style.c h_style_air; `[Style] AirChange`)
+* State 0x19 (style change) starts in 28a950: for a style candidate (cmd+0x190) it asks 264a10 at 28ac1d; in the air it
+  sets pl+0x318 bit 0x80000 and plays the fall loop (motion 10), and the update 286380 integrates gravity until
+  landing, then plays motion 0x87 (0xd3 for categories 7 and 12) and goes on.  The hook at 28ac22 (rax = 264a10,
+  rdi = player) makes the answer "on the ground" for category 6 (Command Styles) only: the change plays at once;
+  1d3b90 right after zeroes the body's velocity and nothing in that state moves the player vertically, so it plays
+  in the air.  The end (21a490(pl, -1)) asks 264a10 itself -> 264060, the fall state.  Not seen in the game by me.
+  Test in `t_style` (the handler on a context).
+
 ## Speed per command (src/speed.c cmd_override; `[CommandSpeed]`)
 * Asked for: Mega Flare a little slower, and a way to set every command by itself.  Mega Flare (0xac) was never in a
   cast-time family: it, and every spell but the four families, played at Actions (1.15) from start to end.

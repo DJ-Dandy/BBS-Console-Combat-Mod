@@ -86,6 +86,8 @@ static u32   c_sc_col = 0x808080;                   /* frame and tab, RRGGBB, 80
 static u32   c_sc_col2 = 0xc09040;                  /* ... while the second set is shown: gold */
 static u32   c_sc_fill = 0x606060;                  /* strength of the gradient inside */
 static float c_sc_item_dx = 11;                     /* an item's bottle icon: this far right of its place on the plain plate */
+static int   c_link_icon = 1;                       /* the D-Link entry gets the pink heart (sequence 0x2e, control 0) */
+static float c_link_icon_x = 97, c_link_icon_y = 3; /* ... moved to where the other entries' icons sit (its sprite is at 0,0) */
 static u32   c_sc_dim = 0x404040;                   /* name of a command that cannot be used now */
 static int   c_hd = 1;                              /* the "COMMANDS" window is grey as well while the list is shown */
 static u32   c_hd_plate = 0x707070, c_hd_text = 0xffffff;   /* ... its label plate and the letters on it (its frame: c_sc_col) */
@@ -136,6 +138,8 @@ static void load_ini(void) {
     c_react = (int)ini_f("ReactionButton", (float)c_react);
     c_sc_icon_x = ini_f("ShortcutIconX", c_sc_icon_x); c_sc_icon_y = ini_f("ShortcutIconY", c_sc_icon_y);
     c_sc_item_dx = ini_f("ShortcutItemIconShift", c_sc_item_dx);
+    c_link_icon = (int)ini_f("DLinkIcon", (float)c_link_icon);
+    c_link_icon_x = ini_f("DLinkIconX", c_link_icon_x); c_link_icon_y = ini_f("DLinkIconY", c_link_icon_y);
     c_sc_pad = ini_f("ShortcutPad", c_sc_pad); if (c_sc_pad < 0) c_sc_pad = 0; if (c_sc_pad > 30) c_sc_pad = 30;
     { char b[32];
       snprintf(b, sizeof b, "%06x", c_sc_col); ini_s("ShortcutColor", b, sizeof b); c_sc_col = (u32)strtoul(b, NULL, 16) & 0xffffff;
@@ -800,6 +804,15 @@ void menu_shutdown(void) {
     g_tw_n = 0;                                 /* the twins belong to a file that may be gone next: made anew when wanted */
     style_shutdown();
 }
+/* The D-Link entry's icon: sequence 0x2e of bc01_00 holds the two hearts of the game's D-Link gauge - control 0 the
+   pink one (sprite 61, texture 362,90..390,118), 1 / 3 the grey one, 2 / 4 the pink one 10 to the left.  Its sprite
+   sits at (0,0)..(14,14) of the node where the other icons' sequences put theirs around (104,10), so the node is
+   moved; and kept at control 0 whatever control the plate takes (set_control sets every node's). */
+static void link_icon(int h) {
+    if (!c_link_icon) return;
+    if (L2D_GetNodeControl(h, 0x5a) != 0) L2D_SetNodeControl(h, 0x5a, 0);
+    FN(int, 0x1a7ec0, int, u16, float, float)(h, 0x5a, c_link_icon_x, c_link_icon_y);
+}
 static int entry_alive(int i) { l2d_live(&g_entry[i]); return g_entry[i] > 0 && L2D_GetControl(g_entry[i]) != 8; }
 static void entry_create(int e, int battle) {
     static const u16 icon[4] = { 0x20, 0x21, 0x22, 0 };         /* keyblade, magic hat, item bottle, none */
@@ -809,7 +822,9 @@ static void entry_create(int e, int battle) {
     if (h <= 0) { g_entry[e] = 0; return; }
     g_entry[e] = h;
     if (!battle) L2D_ReplaceNodeSeq(h, 0x5d, sq, 0xb, 3);       /* field colours, as the game does for its plates */
-    if (icon[e]) L2D_ReplaceNodeSeq(h, 0x5a, sq, icon[e], 3); else L2D_ShowNode(h, 0x5a, 0);
+    if (icon[e]) L2D_ReplaceNodeSeq(h, 0x5a, sq, icon[e], 3);
+    else if (e == E_LINK && c_link_icon) L2D_ReplaceNodeSeq(h, 0x5a, sq, 0x2e, 0);       /* the heart: link_icon() keeps it */
+    else L2D_ShowNode(h, 0x5a, 0);
     L2D_ShowNode(h, 0x5c, 0); L2D_ShowNode(h, 0x5b, 0);         /* item count */
     L2D_SetNodeText(h, 0x5d, "");                               /* confirm button icon */
     if (e != E_ATTACK) L2D_SetNodeText(h, 0, c_text[e - 1]);
@@ -1105,6 +1120,7 @@ void menu_frame(u8 *gauge) {
             L2D_SetNodeFrame(h, 0x5d, 0.0f);                    /* plain "unavailable" look; the MP bar shows the recharge */
         } else ready_look(h, selected, 0);
         cursor_body(h, 0x5d, !selected ? 0 : !usable ? 1 : 2);
+        if (e == E_LINK) link_icon(h);
         L2D_SetColor(h, entry_col);
         L2D_Show(h, hud && !sc);
     }

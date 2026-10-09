@@ -82,7 +82,7 @@ static float c_hop_keep = 0.9f, c_hop_first = 1.2f, c_hop_fin = 0.6f, c_hop_grav
 static int   c_reach = 1;
 static float c_reach_min = 0.5f, c_reach_max = 1.9f;
 static int   c_launch = 1;              /* KH2's height band for the rising attack (the launcher) */
-static float c_launch_min = 0.5f, c_launch_max = 1.9f;
+static float c_launch_min = 1.1f, c_launch_max = 4.35f, c_launch_reach = 2.6f;
 #define P_AERIAL 0x0002
 #define P_RISE   0x0010
 #define P_DOWN   0x0020
@@ -302,17 +302,31 @@ static u64 MSABI h_hover(Ctx *c) {
 
 /* ---- launcher ---- */
 /* 223b0d in 2239b0, where the conditions of the combo tables are built (ecx = bits so far, rbx = player, r13 = 1 in the
-   air): bit 1 (2) = "target above" - the game sets it for any target point above the player (pl+0x618 > 0, which is
-   already less the 0.2 / 0.3 / 0.4 of PPM+0x1c) within 3.5 horizontally.  On the ground it picks the rising attack.
-   KH2 rises only to targets 50 .. 190 cm above (its plyr U MinH / MaxH): on the ground the bit is set only for
-   LaunchMin <= dy <= LaunchMax.  In the air the bit (it picks other air hits) is left as the game set it. */
+   air, pl+0x608 = the target entity): bit 1 (2) = "target above" - the game sets it for a target joint above the
+   player's feet + 0.2 / 0.3 / 0.4 (pl+0x618 > 0) within 3.5; on the ground it picks the rising attack.
+   KH2 (00battle ptya, Sora's set, entry "id 0": motion 182, flags 0xa; checked in 1404027f0): the rising attack needs
+   the bottom of the target's volume 110 .. 250 + jump height (185) cm above Sora's feet and at most 260 cm from Sora
+   to the target's surface; ordinary ground hits take targets whose volume reaches into 20 .. 110 cm.  Here, on the
+   ground: bit 1 = LaunchMin <= (target's position - player's position, both feet / origin, phys+0x34) <= LaunchMax
+   and (horizontal distance - target radius phys+0x190) <= LaunchReach.  In the air the game's bit is kept. */
 static u64 MSABI h_launch(Ctx *c) {
     u8 *pl = (u8*)c->rbx;
-    if (!c_launch || (u32)c->r13 || *(float*)(pl + 0x614) > 3.5f) return 0;
-    float dy = *(float*)(pl + 0x618);
-    int was = (c->rcx & 2) != 0, now = dy >= c_launch_min && dy <= c_launch_max;
+    if (!c_launch || (u32)c->r13) return 0;
+    u8 *tg = *(u8**)(pl + 0x608), *tp = tg ? *(u8**)(tg + 0x80) : NULL, *pp = *(u8**)(pl + 0x80);
+    int was = (c->rcx & 2) != 0, now = 0;
+    float h = 0.0f, d = 0.0f;
+    if (tp && pp && *(int*)(pl + 0x600) > 0) {
+        h = *(float*)(tp + 0x34) - *(float*)(pp + 0x34);
+        float dx = *(float*)(tp + 0x30) - *(float*)(pp + 0x30), dz = *(float*)(tp + 0x38) - *(float*)(pp + 0x38);
+        float r = *(float*)(tp + 0x190);
+        if (!(r > 0.0f)) r = 0.0f;
+        if (r > 1.5f) r = 1.5f;
+        d = sqrtf(dx * dx + dz * dz) - r;
+        now = h >= c_launch_min && h <= c_launch_max && d <= c_launch_reach;
+    }
     if (now) c->rcx |= 2; else c->rcx &= ~(u64)2;
-    if ((g_debug || c_airlog) && was != now) LOG("launch: target %.2f above, %s", dy, now ? "rising attack" : "ground combo");
+    if ((g_debug || c_airlog) && (was != now || now)) LOG("launch: target %.2f above, %.2f from its edge: %s%s", h, d, now ? "rising attack" : "ground combo",
+                                                          was == now ? "" : was ? " (the game would rise)" : " (the game would not)");
     return 0;
 }
 
@@ -448,6 +462,7 @@ int speed_check(void) {
     c_reach = (int)ini_f("AirReach", (float)c_reach);
     c_launch = (int)ini_f("LaunchHeight", (float)c_launch);
     c_launch_min = ini_f("LaunchMin", c_launch_min); c_launch_max = ini_f("LaunchMax", c_launch_max);
+    c_launch_reach = ini_f("LaunchReach", c_launch_reach);
     c_reach_min = ini_f("AirReachMin", c_reach_min); c_reach_max = ini_f("AirReachMax", c_reach_max); c_airlog = (int)ini_f("AirLog", (float)c_airlog);
     c_hop_keep = ini_f("AirHopKeep", c_hop_keep); c_hop_first = ini_f("AirHopFirst", c_hop_first);
     c_hop_fin = ini_f("AirHopFinisher", c_hop_fin); c_hop_grav = ini_f("AirHopGravity", c_hop_grav);

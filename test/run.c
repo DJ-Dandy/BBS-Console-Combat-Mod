@@ -1121,18 +1121,27 @@ static void t_speed(void) {
         *(float*)(p + 0x618) = 1.2f; *(int*)(p + 0x600) = 0; CHECK(NEWHIT(h2) == plain, "no target: the plain hop");
         *(int*)(p + 0x600) = 1; *test_reach_on() = 0; CHECK(NEWHIT(hit) == plain, "AirReach = 0: the plain hop");
         *test_reach_on() = 1; *(int*)(p + 0x600) = 0; *(float*)(p + 0x618) = 0; }
-      /* the launcher on the ground only for targets 0.5 .. 1.9 above (KH2's band); in the air the game's bit stays */
+      /* the launcher on the ground only for a target whose position is 1.1 .. 4.35 above and within 2.6 of its edge
+         (KH2's rule from Sora's ptya entry); in the air the game's bit stays */
       { extern int *test_launch_on(void); extern u64 test_h_launch(Ctx *c);
-        Ctx cx; memset(&cx, 0, sizeof cx); cx.rbx = (u64)p; *(float*)(p + 0x614) = 2.0f;
-        #define LBIT(dy, air, in) (*(float*)(p + 0x618) = (dy), cx.r13 = (air), cx.rcx = (in), test_h_launch(&cx), (int)(cx.rcx & 2))
-        CHECK(LBIT(0.3f, 0, 2) == 0, "launch: target 0.3 above on the ground - ground combo");
-        CHECK(LBIT(1.0f, 0, 2) == 2, "launch: target 1.0 above - rising attack");
-        CHECK(LBIT(2.5f, 0, 2) == 0, "launch: target 2.5 above - ground combo");
-        CHECK(LBIT(0.3f, 1, 2) == 2 && LBIT(0.3f, 1, 0) == 0, "launch: in the air the game's bit is kept");
-        CHECK((LBIT(0.3f, 0, 0x2a) & 2) == 0 && cx.rcx == 0x28, "launch: other bits untouched");
-        *(float*)(p + 0x614) = 4.0f; CHECK(LBIT(1.0f, 0, 0) == 0, "launch: beyond 3.5 left to the game");
-        *(float*)(p + 0x614) = 2.0f; *test_launch_on() = 0; CHECK(LBIT(0.3f, 0, 2) == 2, "LaunchHeight = 0: the game's rule");
-        *test_launch_on() = 1; *(float*)(p + 0x614) = 0; *(float*)(p + 0x618) = 0; }
+        static u8 tent[0x100], tphys[0x200], pphys[0x200];
+        u8 *keep80 = *(u8**)(p + 0x80), *keep608 = *(u8**)(p + 0x608); int keep600 = *(int*)(p + 0x600);
+        *(u8**)(p + 0x80) = pphys; *(u8**)(tent + 0x80) = tphys; *(u8**)(p + 0x608) = tent; *(int*)(p + 0x600) = 7;
+        *(float*)(pphys + 0x30) = 10.0f; *(float*)(pphys + 0x34) = 2.0f; *(float*)(pphys + 0x38) = 5.0f;
+        *(float*)(tphys + 0x190) = 0.5f;
+        Ctx cx; memset(&cx, 0, sizeof cx); cx.rbx = (u64)p;
+        #define LBIT(hh, dd, air, in) (*(float*)(tphys + 0x30) = 10.0f + (dd), *(float*)(tphys + 0x34) = 2.0f + (hh), *(float*)(tphys + 0x38) = 5.0f, \
+                                       cx.r13 = (air), cx.rcx = (in), test_h_launch(&cx), (int)(cx.rcx & 2))
+        CHECK(LBIT(0.0f, 1.0f, 0, 2) == 0, "launch: enemy on the same floor - ground combo");
+        CHECK(LBIT(0.8f, 1.0f, 0, 2) == 0, "launch: enemy 0.8 above - ground combo");
+        CHECK(LBIT(1.5f, 1.0f, 0, 0) == 2, "launch: enemy 1.5 above - rising attack");
+        CHECK(LBIT(1.5f, 3.0f, 0, 0) == 2 && LBIT(1.5f, 3.2f, 0, 0) == 0, "launch: reach 2.6 to the enemy's edge (radius 0.5)");
+        CHECK(LBIT(5.0f, 1.0f, 0, 2) == 0, "launch: enemy 5 above - ground combo");
+        CHECK(LBIT(0.0f, 1.0f, 1, 2) == 2 && LBIT(1.5f, 1.0f, 1, 0) == 0, "launch: in the air the game's bit is kept");
+        CHECK((LBIT(0.0f, 1.0f, 0, 0x2a) & 2) == 0 && cx.rcx == 0x28, "launch: other bits untouched");
+        *(int*)(p + 0x600) = 0; CHECK(LBIT(1.5f, 1.0f, 0, 2) == 0, "launch: no target - no rising attack");
+        *(int*)(p + 0x600) = 7; *test_launch_on() = 0; CHECK(LBIT(0.0f, 1.0f, 0, 2) == 2, "LaunchHeight = 0: the game's rule");
+        *test_launch_on() = 1; *(u8**)(p + 0x80) = keep80; *(u8**)(p + 0x608) = keep608; *(int*)(p + 0x600) = keep600; }
       /* off: the game's own 16 %% */
       *test_hop_on() = 0; *(float*)(p + 0x50c) = 0.0f; test_fall_clear(); *(float*)(p + 0x508) = g * 0.16f;
       FN(void, 0x21cb00, u8*, float, float, int)(p, 2.0f, 8.0f, 1);

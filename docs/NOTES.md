@@ -446,11 +446,21 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   pl+0x620 angle.  Within 3.5: bit 1 (2) if dy > 0, bit 5 (0x20) if dy < -1.5; bit 3 (8) beyond 3.5; bit 2 (4)
   angle <= 45 deg, bit 4 (0x10) 45 .. 135 deg.  All three base tables: on the ground with bit 1 -> PBA slot 4,
   the rising attack (16 / 301 / 582); in the air bit 1 picks another air hit (19 / 304 / 584).
-* KH2 (03system pref plyr, Sora): ground attack MinH / MaxH -100 / 40, rising attack U MinH / MaxH -190 / -50 within
-  URange 260, air -140 / 40 (cm, Y up is negative).  Not found in KH2's code which of the two wins at 50 .. 100.
-* The hook at 223b0d (ecx = mask, rbx = player, r13 = 1 in the air): on the ground and within 3.5, bit 1 =
-  LaunchMin <= dy <= LaunchMax (defaults 0.5 / 1.9, KH2's band); in the air nothing changes.  Command Style tables
-  that test bit 1 on the ground follow the same band.  Test in `t_speed` (the handler on a context).
+* KH2, first look (03system pref plyr, Sora: U MinH / MaxH -190 / -50, URange 260) gave 0.5 .. 1.9; the first build used
+  that.  Asked to make Ventus match Sora exactly, KH2's code was searched (Ghidra, all 24789 functions): no code reads
+  those plyr fields (the plyr entry is reached only through obj+0x150, and only +0x2c, +0x50..+0x70 are read).  The
+  attack choice is 00battle.bin ptya (0x44-byte entries; Sora = pointer 1): 1404029f0 / 1404027f0 test, per entry,
+  Near <= horizontal distance - target radius < Far, High < target y (player local, Y up negative) <= Low, angle.
+  The target is the enemy's target collision (1403c9c00: bone + offset, radius +0x10, half height +0x12 = "span").
+  Flag 2: High -= the jump height (prty, 185); flag 8 / 0x10 flip the span.  Sora's base rising attack (id 0, motion
+  182, flags 0xa): -435 - span < y <= -110 - span, Far 260 -> the bottom of the target 110 .. 435 cm above Sora's feet
+  within 260 cm of its edge.  Ordinary first hits (id 4 / 6, flags 0): -110 - span < y <= -20 + span -> the target
+  reaches into 20 .. 110 cm.  Units: Sora's skeleton is 160 tall (cm), Ventus 1.59 (m); jump 185 / 1.86.
+* The hook at 223b0d (ecx = mask, rbx = player, r13 = 1 in the air, pl+0x608 = target entity): on the ground,
+  bit 1 = LaunchMin <= target phys+0x34 - player phys+0x34 <= LaunchMax and horizontal distance - target phys+0x190
+  (radius, clamped 0 .. 1.5) <= LaunchReach (defaults 1.1 / 4.35 / 2.6).  BBS has no "bottom of the target volume";
+  the entity's position (its feet / origin) stands in for it.  In the air nothing changes.  Command Style tables that
+  test bit 1 on the ground follow the same rule.  Test in `t_speed` (the handler on a context with fake entities).
 
 ## Speed per command (src/speed.c cmd_override; `[CommandSpeed]`)
 * Asked for: Mega Flare a little slower, and a way to set every command by itself.  Mega Flare (0xac) was never in a

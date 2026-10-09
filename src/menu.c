@@ -87,7 +87,7 @@ static u32   c_sc_col2 = 0xc09040;                  /* ... while the second set 
 static u32   c_sc_fill = 0x606060;                  /* strength of the gradient inside */
 static float c_sc_item_dx = 11;                     /* an item's bottle icon: this far right of its place on the plain plate */
 static int   c_link_icon = 1;                       /* the D-Link entry gets the pink heart (sequence 0x2e, control 0) */
-static float c_link_icon_x = 97, c_link_icon_y = 1; /* ... moved to where the other entries' icons sit (its sprite is at 0,0) */
+static float c_link_icon_x = 97, c_link_icon_y = 2; /* ... moved to where the other entries' icons sit (its sprite is at 0,0) */
 static u32   c_sc_dim = 0x404040;                   /* name of a command that cannot be used now */
 static int   c_hd = 1;                              /* the "COMMANDS" window is grey as well while the list is shown */
 static u32   c_hd_plate = 0x707070, c_hd_text = 0xffffff;   /* ... its label plate and the letters on it (its frame: c_sc_col) */

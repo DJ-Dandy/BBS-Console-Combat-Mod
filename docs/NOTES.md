@@ -467,7 +467,7 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   0x22 bottle (control 3 the still one), the D-Link entry had none.  The hearts are sequence 0x2e (the D-Link gauge's):
   control 0 the pink heart (sprite 61, texture 362,90..390,118, 14 x 14 at (0,0)), 1 / 3 the grey one (sprite 62),
   2 / 4 pink 10 to the left.  Its sprite sits at the node's origin where the other sequences put theirs around
-  (104, 10), so the node is moved by (97, 1) (first 3: reported too low) (1a7ec0 -> the node's +0x58 method), and node 0x5a is put back on
+  (104, 10), so the node is moved by (97, 2) (3 was too low, 1 too high) (1a7ec0 -> the node's +0x58 method), and node 0x5a is put back on
   control 0 every frame (the plate's set_control sets every node's control; 1 / 3 would be the grey heart).
   Asked for: the pink one always, also when the entry cannot be used (the other icons do not grey out either).
 

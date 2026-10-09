@@ -6,16 +6,26 @@
 --  this file layers a revenge counter on top of selected bosses.
 --
 --  How BBS works (vanilla): every boss AI has OnDamageBefore/OnDamage
---  callbacks. Humanoid bosses flinch normally, but those callbacks roll
---  dice on *every hit* ("15% cartwheel away", "dmgCount * k chance to
---  guard/teleport") so a combo can be broken by its first hit.
+--  callbacks.  OnDamageBefore runs on (nearly) every hit and can negate
+--  it; OnDamage runs only when no damage reaction is under way - the
+--  first hit of a combo - and can refuse the flinch.  Humanoid bosses
+--  roll dice in them on every hit, so a combo can be broken by its
+--  first hit; bosses whose only break-out lives in OnDamage (Zack,
+--  Hades) or nowhere (Peter Pan) can instead be comboed forever.
 --
---  What this does: for the bosses listed in RV.cfg the dice are taken
---  away.  Each hit that staggers the boss adds a Revenge Value that
---  depends on the kind of attack.  Below the boss's limit the boss can
---  not break out; once the limit is reached the boss performs its own
---  (vanilla) break-out / counter move and the counter starts over.
---  The counter also resets when the boss recovers from hit-stun.
+--  Version 2 copies the system KH2 itself uses (verified in its code
+--  and data): every hit adds a weight to a gauge, the gauge drains
+--  while the boss is not being hit, and at a per-boss limit the boss
+--  performs its revenge action - guaranteed, even mid-combo:
+--    - below the limit the dice are taken away: no random escapes;
+--    - at the limit the boss breaks out through its own script, or
+--      through a `counter` the config brings; a watchdog in the boss's
+--      update forces it even when the engine mutes the hit callbacks
+--      (some juggle reactions do), and an HP watch keeps counting the
+--      hits the callbacks never see;
+--    - the limit is re-rolled a little after each revenge (KH2 FM
+--      varies the cap), and the break-out can get a short armour
+--      window so it cannot be stuffed (KH2 revenge actions have one).
 --  Hits that land while the boss has super armour are not counted.
 --  Bosses that are not listed (all the large ones) are untouched.
 -- =====================================================================
@@ -24,18 +34,26 @@ __FACTORY_ORIGINAL__()
 -- Everything below is additive.  It runs inside pcall so that, whatever
 -- happens, the original factory above is already in place and working.
 pcall(function()
-local RV = { version = "1.0", cfg = {}, ents = {} }
+local RV = { version = "2.0", cfg = {}, ents = {} }
 BBS_REVENGE = RV
 
--- Revenge value added per hit, by command category of the attack.
+-- Revenge value added per hit.  Scaled to KH2's own attack data
+-- (00battle.bin atkp, "revenge damage", read from the game: a normal
+-- hit is 1.0, finishers ~3, multi-hit spells small amounts per tick).
 RV.weight = {
   default   = 1.0,   -- normal combo hits, attack commands
   magic     = 1.5,
+  magicCast = 4.0,   -- one cast adds at most this (KH2's heaviest magic)
+  magicWin  = 45,    -- frames (30/s): magic hits this close count as one cast
   finish    = 3.0,   -- combo finishers / finish commands
   shootlock = 0.3,   -- per shotlock hit
   launch    = 0.5,   -- extra for hits that launch / knock away
 }
-RV.decay = 60        -- frames (30/s) without a landed hit before the counter clears
+RV.grace    = 15     -- frames after the last hit before the gauge drains
+RV.drain    = 0.2    -- per frame once draining (KH2: 6 hit-units a second)
+RV.vary     = 1.0    -- next limit = boss's limit +- up to this, re-rolled per revenge
+RV.watchdog = 6      -- frames at the limit without a break-out before `counter` is forced from the update
+RV.iframes  = 0      -- armour frames after a forced break-out (0 = none; per boss: cfg.iframes)
 
 -- ---------------------------------------------------------------------
 -- Controlled dice.  While one of our wrapped callbacks runs, the boss
@@ -114,20 +132,25 @@ local function truthy(r)
   return r ~= nil and r ~= false and r ~= 0
 end
 
-local function hitValue(kind, cat)
+-- KH2's weights, from its attack data.  Magic is capped per cast: hits
+-- within magicWin frames of each other count as one cast of at most
+-- magicCast, the way KH2 gives multi-hit spells small per-tick values.
+local function hitValue(st, kind, cat)
   local w = RV.weight
-  local v = w.default
-  if cat == COMMAND_CATEGORY_FINISH then
-    v = w.finish
-  elseif cat == COMMAND_CATEGORY_SHOOTLOCK then
-    v = w.shootlock
-  elseif cat == COMMAND_CATEGORY_MACIG then
-    v = w.magic
+  if cat == COMMAND_CATEGORY_FINISH then return w.finish end
+  if cat == COMMAND_CATEGORY_SHOOTLOCK then return w.shootlock end
+  if cat == COMMAND_CATEGORY_MACIG then
+    if st.t - st.magT > w.magicWin then st.magSum = 0 end
+    st.magT = st.t
+    local v = w.magic
+    if st.magSum + v > w.magicCast then v = w.magicCast - st.magSum end
+    if v < 0 then v = 0 end
+    st.magSum = st.magSum + v
+    return v
   end
-  if cat ~= COMMAND_CATEGORY_FINISH and cat ~= COMMAND_CATEGORY_SHOOTLOCK then
-    if kind == ATK_KIND_DMG_BLOW or kind == ATK_KIND_DMG_TOSS or kind == ATK_KIND_DMG_BEAT or kind == ATK_KIND_DMG_FLICK then
-      v = v + w.launch
-    end
+  local v = w.default
+  if kind == ATK_KIND_DMG_BLOW or kind == ATK_KIND_DMG_TOSS or kind == ATK_KIND_DMG_BEAT or kind == ATK_KIND_DMG_FLICK then
+    v = v + w.launch
   end
   return v
 end
@@ -153,10 +176,13 @@ local function attach(ent, name, handle)
 
   local st = rawget(ent, "__rv")
   if st ~= nil then                         -- same object re-used: just clear
-    st.rv, st.idle, st.firing = 0, 0, false
+    st.rv, st.idle, st.firing, st.fireT, st.armor = 0, 0, false, 0, 0
+    st.limit = c.limit
     return
   end
-  st = { rv = 0, idle = 0, firing = false, count = 0, name = name, cfg = c }
+  st = { rv = 0, idle = 0, firing = false, fireT = 0, armor = 0, count = 0, fcount = 0,
+         t = 0, magT = -1e9, magSum = 0, hp = nil, sawHit = false,
+         limit = c.limit, name = name, cfg = c }
   rawset(ent, "__rv", st)
   RV.ents[name] = st
 
@@ -196,9 +222,66 @@ local function attach(ent, name, handle)
     return c.active == nil or c.active(self)
   end
 
-  local function done()
-    st.rv, st.idle, st.firing = 0, 0, false
+  local h0 = handle
+  local function myh(self) return self.myHandle or h0 end
+
+  -- the next limit: the boss's number, re-rolled a little (KH2 FM varies the cap)
+  local function rollLimit(self)
+    local vary = c.vary
+    if vary == nil then vary = RV.vary end
+    local r = 0.5
+    if S.real ~= nil then r = S.real() end
+    local l = c.limit + (r * 2 - 1) * vary
+    if l < 2 then l = 2 end
+    st.limit = l
+  end
+
+  -- a break-out happened.  fired = it was our forced revenge: arm the
+  -- armour window (KH2 revenge actions cannot be stuffed), if configured.
+  local function done(fired)
+    st.rv, st.idle, st.firing, st.fireT = 0, 0, false, 0
     st.count = st.count + 1
+    if fired then st.fcount = st.fcount + 1 end
+    rollLimit()
+    if fired then
+      local n = c.iframes or RV.iframes
+      if n ~= nil and n ~= false and n > 0 and type(Enemy.EnableNoDamageReaction) == "function" then
+        Enemy.EnableNoDamageReaction(myh(ent), 1)
+        st.armor = n
+      end
+    end
+  end
+
+  -- the forced revenge of a hit (or of the watchdog): the boss's own
+  -- callback first, the config's counter when the script has none that
+  -- fires on a hit.  Returns the value for the engine.
+  local function fire(f, self, kind, cat, attr, x)
+    local r = runFire(f, self, kind, cat, attr, x)
+    if not truthy(r) and c.counter ~= nil then
+      local ok, r2 = pcall(c.counter, self, kind, cat, attr, x)
+      if ok then r = r2 end
+    end
+    if truthy(r) then done(true) end
+    return r
+  end
+
+  -- KH2 bosses press; a config with haste < 1 shortens the idle times a
+  -- script asks its parameters for (only where the script reads them
+  -- through a method on the entity - timers baked into a script as
+  -- constants cannot be reached).
+  if type(c.haste) == "number" and c.haste ~= 1 then
+    local fns = c.hasteFns or { "GetIdlingChangeTime" }
+    for i = 1, #fns do
+      local fname = fns[i]
+      local fn = ent[fname]
+      if type(fn) == "function" then
+        rawset(ent, fname, function(self, a, b)
+          local v = fn(self, a, b)
+          if type(v) == "number" then return v * c.haste end
+          return v
+        end)
+      end
+    end
   end
 
   rawset(ent, "OnDamageBefore", function(self, kind, cat, attr, x)
@@ -206,33 +289,26 @@ local function attach(ent, name, handle)
       if odb == nil then return 0 end
       return odb(self, kind, cat, attr, x)
     end
+    st.sawHit = true
     if vanilla(self, kind, cat) then
       local r = 0
       if odb ~= nil then r = odb(self, kind, cat, attr, x) end
-      if truthy(r) then done() end
+      if truthy(r) then done(false) end
       return r
     end
-    local h = self.myHandle or handle
-    if shielded(h) or not countsAsHit(kind) then
+    if shielded(myh(self)) or not countsAsHit(kind) then
       return runQuiet(odb, self, kind, cat, attr, x)
     end
-    local v = hitValue(kind, cat)
-    if st.rv + v >= c.limit then
+    local v = hitValue(st, kind, cat)
+    if st.rv + v >= st.limit then
       st.rv = st.rv + v
       st.idle = 0
       st.firing = true
-      local r = runFire(odb, self, kind, cat, attr, x)
-      if not truthy(r) and c.counter ~= nil then
-        -- the script has no break-out of its own on a hit: the config brings one
-        local ok, r2 = pcall(c.counter, self, kind, cat, attr, x)
-        if ok then r = r2 end
-      end
-      if truthy(r) then done() end
-      return r
+      return fire(odb, self, kind, cat, attr, x)
     end
     local r = runQuiet(odb, self, kind, cat, attr, x)
     if truthy(r) then
-      done()                       -- the boss acted on its own: start over
+      done(false)                  -- the boss acted on its own: start over
     else
       st.rv = st.rv + v            -- the hit lands: build revenge
       st.idle = 0
@@ -246,38 +322,85 @@ local function attach(ent, name, handle)
       local r
       if vanilla(self, kind, cat) then
         r = od(self, kind, cat, attr, x)
-      elseif st.firing and not shielded(self.myHandle or handle) then
+        if truthy(r) and not c.armored then done(false) end
+        return r
+      end
+      st.sawHit = true
+      if st.firing and not shielded(myh(self)) then
         r = runFire(od, self, kind, cat, attr, x)
-      else
-        r = runQuiet(od, self, kind, cat, attr, x)
+        if truthy(r) and not c.armored then done(true) end
+        return r
       end
+      r = runQuiet(od, self, kind, cat, attr, x)
       -- reaction cancelled: the boss broke out (a boss that never flinches cancels every reaction)
-      if truthy(r) and not c.armored then done() end
+      if truthy(r) and not c.armored then done(false) end
       return r
     end)
   end
 
-  if ord ~= nil then
+  if ord ~= nil or c.recover ~= nil then
     rawset(ent, "OnReturnDamage", function(self, a, b, c2, d)
-      st.rv, st.idle, st.firing = 0, 0, false
-      return ord(self, a, b, c2, d)
-    end)
-  end
-
-  if upd ~= nil then
-    rawset(ent, "OnUpdate", function(self, a, b, c2, d)
-      if st.rv > 0 then
-        local dt = Entity.GetFrameRate(self.myHandle or handle)
-        if type(dt) ~= "number" then dt = 1 end
-        st.idle = st.idle + dt
-        if st.idle > (c.decay or RV.decay) then st.rv, st.idle, st.firing = 0, 0, false end
-      end
-      local r = upd(self, a, b, c2, d)
-      -- break-outs that start from the boss's own update instead of from a hit
-      if st.firing and c.fired ~= nil and c.fired(self) == true then done() end
+      st.rv, st.idle, st.firing, st.fireT = 0, 0, false, 0
+      local r
+      if ord ~= nil then r = ord(self, a, b, c2, d) end
+      -- KH2 bosses come back at you after a combo; the config's recover
+      -- overrides a script that just stands up into idling.
+      if c.recover ~= nil then pcall(c.recover, self) end
       return r
     end)
   end
+
+  rawset(ent, "OnUpdate", function(self, a, b, c2, d)
+    local dt = Entity.GetFrameRate(myh(self))
+    if type(dt) ~= "number" or dt <= 0 or dt > 6 then dt = 1 end
+    st.t = st.t + dt
+    -- armour window after a forced revenge
+    if st.armor > 0 then
+      st.armor = st.armor - dt
+      if st.armor <= 0 then
+        st.armor = 0
+        if type(Enemy.EnableNoDamageReaction) == "function" then Enemy.EnableNoDamageReaction(myh(self), 0) end
+      end
+    end
+    -- hits the engine hides from the callbacks (some juggle reactions)
+    -- still cost HP: count them so those combos cannot run forever
+    local hp = Enemy.GetHp(myh(self))
+    if type(hp) == "number" then
+      if type(st.hp) == "number" and hp < st.hp and not st.sawHit and active(self) then
+        st.rv = st.rv + RV.weight.default
+        st.idle = 0
+        if st.rv >= st.limit then st.firing = true end
+      end
+      st.hp = hp
+    end
+    st.sawHit = false
+    -- the gauge drains while the boss is left alone (KH2: out of hit-stun)
+    if st.rv > 0 then
+      local grace = c.grace
+      if grace == nil then grace = RV.grace end
+      st.idle = st.idle + dt
+      if st.idle > grace then
+        local dr = c.drain
+        if dr == nil then dr = RV.drain end
+        st.rv = st.rv - dr * dt
+        if st.rv <= 0 then st.rv, st.firing, st.fireT = 0, false, 0 end
+      end
+    end
+    -- the watchdog: at the limit, a break-out that no hit has managed to
+    -- fire (muted callbacks, a script with no own break-out) is forced
+    if st.firing then
+      st.fireT = st.fireT + dt
+      if st.fireT >= RV.watchdog and c.counter ~= nil and active(self) then
+        local ok, r = pcall(c.counter, self)
+        if ok and truthy(r) then done(true) else st.fireT = 0 end
+      end
+    end
+    local r
+    if upd ~= nil then r = upd(self, a, b, c2, d) end
+    -- break-outs that start from the boss's own update instead of from a hit
+    if st.firing and c.fired ~= nil and c.fired(self) == true then done(false) end
+    return r
+  end)
 end
 RV.attach = attach
 

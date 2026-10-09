@@ -34,9 +34,13 @@ file is changed, and removing the mod puts everything back.
   gravity off); a ground attack only rises into the air for an enemy at least 1.1 m above you, as Sora's
   does in KH2 (the game rises for nearly any enemy above your feet); after an aerial attack you fall instead of hanging; spells go off and unlock at KH2's times.
 - **Camera**: KH2-style field and battle camera.
-- **Revenge values**: humanoid bosses can no longer roll dice to escape on every hit. Each hit builds a hidden
-  value (hit 1, magic 1.5, finisher 3, shotlock hit 0.3) and at the boss's limit he breaks out with his own
-  counter. Large bosses are untouched.
+- **Revenge values**: KH2's own system, rebuilt from its code and data. Humanoid bosses no longer roll dice to
+  escape on every hit: each hit builds a hidden value (hit 1, finisher 3, magic capped per cast, as in KH2's
+  attack data), the value drains at KH2's pace when you stop attacking, and at the boss's limit - re-rolled a
+  little each time - he breaks out with his own counter, guaranteed, with a short armour window so it cannot be
+  stuffed. Bosses that had no answer to an unbroken combo (Peter Pan, Zack, Hades, Maleficent, Captain Hook in
+  places) now have their own moves as one, and Peter Pan comes back at you after a combo instead of idling.
+  Large bosses are untouched.
 
 ## Requirements
 

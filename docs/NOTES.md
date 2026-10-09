@@ -98,11 +98,32 @@ player_command.md (command deck, plates, input, styles, D-Link).
   hooks the same three places (an installed old exe patch is taken out of them in memory first).  Its PAtkData.bin bytes and the KH2 Camera files are set in place
   when the resource object is created: CRsrcData::vftable[1] at 637b10 (was a bare ret, 114bc0).
 - Revenge Value: the call to luaL_loadbuffer at 2c5962 swaps the 638-byte original Factory.lub for our build
-  (bundle_src/Factory_revenge.lub, made by tools/genrevenge.py from bundle_src/revenge/*.lua; unchanged
-  sources reproduce the old mod's 10208-byte file byte for byte).  Since 2026-10-04 the copy here goes beyond
-  the old standalone mod: Zack, Hades, Master Xehanort and No Heart were added (see bosses.lua; the old mod's
-  folder is untouched).  The framework got four optional config keys for them: `counter` (a break-out the
-  config performs when the script has none on a hit), `armored`, `fired`, `decay`, and `quiet = "real"`.
+  (bundle_src/Factory_revenge.lub, made by tools/genrevenge.py from bundle_src/revenge/*.lua).  Since
+  2026-10-04 the copy here goes beyond the old standalone mod: Zack, Hades, Master Xehanort and No Heart were
+  added (the old mod's folder is untouched).  2026-10-09, version 2: the core rules are KH2's own, verified in
+  the KH2 exe and data (its atkp table holds a per-attack "revenge damage" byte, x10 fixed point, normal hit
+  10; the engine sums it into the victim at +0xd48, compares against a per-boss cap at +0xd4c - default 100 -
+  every update when flag +0x6c8 bit 4 is set, fires the AI event named "revenge" at the cap, and drains the
+  gauge 1.0 a frame at 60 fps while the enemy is not being hit [14040e337..6b, 1403db730, 1403db440]).
+  Mapped to BBS Lua: weights 1 / finisher 3 / magic 1.5 capped at 4 per cast (45-frame window) / shotlock 0.3
+  / +0.5 launch; drain 0.2 per 30 fps frame after a 15-frame grace; limit re-rolled +-1 after each revenge.
+  - Why Zack / Peter Pan / Hades / Maleficent could be looped: the engine calls OnDamageBefore on (nearly)
+    every hit [2d5e30: skipped when the reaction controller's type at +0x14 is 4 or >= 6] but OnDamage only
+    when no damage reaction is running [2d60f0: +0xac's +0x10 == 0] - the first hit of a combo.  A break-out
+    that lives only in OnDamage (Zack, Hades, Maleficent) can never fire mid-combo, and Peter Pan's script
+    has no break-out at all (his OnDamage returns nothing and his recovery is GotoState("Idling")).
+  - The guarantee, v2: every such boss has a `counter` built from its own states (Zack: Climbhazard /
+    Hakougeki / BackJump as his script rolls them; Hades: BladesCrossing / NoRiaFingernailofFire; Maleficent:
+    warp or StaffAttack; Peter Pan: Attack3; Hook: Guard / Evade into JumpCutting), fired from OnDamageBefore
+    at the limit and, when hits land in a state where the engine mutes the callbacks, from a watchdog in
+    OnUpdate (RV.watchdog = 6 frames at the limit).  An HP watch in OnUpdate counts hits the callbacks never
+    saw (1.0 each).  A break-out can arm cfg.iframes frames of EnableNoDamageReaction (Peter Pan 24, Zack /
+    Hades / Hook / Maleficent 18) so the revenge cannot be stuffed - KH2 revenge actions behave so.
+  - Config keys: `counter`, `armored`, `fired`, `quiet = "real"`, and new in v2: `grace` / `drain` (per-boss
+    gauge decay; No Heart 60 / 0.05 for his vanilla 10 s memory), `vary`, `iframes`, `recover` (run after
+    OnReturnDamage: Peter Pan goes to BeforeAttackIdling - his approach-then-attack - instead of idling),
+    `haste` (scales idle times read through entity methods such as GetIdlingChangeTime; timers baked into a
+    script as constants are out of reach).  `decay` (v1 hard clear) was replaced by grace / drain.
   - Build needs Lua 5.1 in the game's bytecode format: github.com/lua/lua tag v5.1.1 with LUA_NUMBER float
     (luaconf.h: number type, "%.7g" / "%f", strtof), the string length dumped and loaded as unsigned int
     (ldump.c DumpString, lundump.c LoadString, header byte 4), and lua_dump stripping when LUA_STRIP is set.
@@ -114,7 +135,13 @@ player_command.md (command deck, plates, input, styles, D-Link).
     returns 1: he cannot be made to stagger.  His own answer to a string of hits is a burst on a timer
     (132 + 0..180 frames after the first hit); the mod drives that timer from the revenge value instead.
   - test/revenge: the boss scripts run against a stand-in engine (which hit breaks the combo, with and
-    without the mod).
+    without the mod).  v2 adds test/revenge/loop.sh: 80-hit unbroken combos (OnDamageBefore only, as the
+    engine behaves mid-combo) against every configured boss, one script per process (the stand-in's globals
+    are shared and scripts contaminate each other); every boss must break out repeatedly, with forced
+    revenges, and never let more than 16 hits go unanswered.  b52ex00 cannot run in the stand-in (its script
+    trips over uninitialised fields there); its own-AI break-out is pre()-saturated and its shared-AI form is
+    covered through the wielder script.  Zack's arena / Ventus-dream modes read their CounterNum from enemy
+    params at setup, which the stand-in cannot supply - another reason their own counters looked dead there.
 - The old standalone mods were uninstalled from the game files on 2026-10-04 (their folders are untouched;
   their stale backup records were moved to _to_delete in the game folder).
 - See resource_loading.md.

@@ -16,7 +16,14 @@
 --   armored  true: the boss never flinches, so its OnDamage result is not a break-out
 --   fired    function(self) -> true once a break-out that starts from the boss's own
 --            update (not from a hit) is under way
---   decay    frames without a landed hit before the counter clears (default RV.decay)
+--   grace    frames after the last hit before the gauge starts to drain (default RV.grace)
+--   drain    gauge drained per frame once draining (default RV.drain; KH2's pace)
+--   vary     the limit is re-rolled +- this after each revenge (default RV.vary)
+--   iframes  armour frames after a forced break-out, so it cannot be stuffed (default none)
+--   recover  function(self) run after the boss recovers from hit-stun: KH2 bosses come
+--            back at you, several BBS scripts just stand up into idling
+--   haste    < 1 shortens the idle times the script reads through entity methods
+--            (hasteFns, default GetIdlingChangeTime); timers baked in as constants stay
 -- Large bosses are deliberately absent: they keep their vanilla behaviour.
 -- ---------------------------------------------------------------------
 local cfg = RV.cfg
@@ -94,16 +101,86 @@ cfg.b01ex00 = {
   end,
 }
 
--- Captain Hook: guard / evade roll on every hit.
-cfg.b01pp00 = { limit = 10 }
+-- Captain Hook: guard / evade roll on every hit (his own recovery already
+-- counter-attacks, so no recover is needed).  The counter is his own escape -
+-- guard or evade, then his jump-cut counter - for hits his rolls do not cover.
+cfg.b01pp00 = {
+  limit = 10,
+  iframes = 18,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" or s == "Guard" or s == "Evade" or s == "JumpCutting"
+       or s == "SinkSea" or s == "FlyUp" or s == "Blow" or s == "FireDamage" then return 0 end
+    if self.stack == nil then return 0 end
+    self.stack:push("Idling")
+    self.stack:push("JumpCutting")
+    if Script.Random() < 0.5 then
+      self.stack:push("Guard")
+    else
+      self.stack:push("Evade")
+    end
+    self:GotoState(self.stack:pop(1))
+    pcall(function() Entity.SetMovementCollKind(self.myHandle, COLL_KIND_ENEMY) end)
+    return 1
+  end,
+}
+
+-- Peter Pan.  vanilla: no break-out of any kind - he can be comboed forever - and
+-- he recovers from hit-stun into idling.  At the limit he answers with one of his
+-- own attacks; after any combo he goes straight back on the offensive.
+cfg.b20pp00 = {
+  limit = 10,
+  iframes = 24,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" or s == "BattleStartState" then return 0 end
+    self.targetHandle = Enemy.SearchAttackEntity(self.myHandle, SEARCH_TYPE_NEAR)
+    if self.stack ~= nil then
+      pcall(function() self.stack:clear() self.stack:push("Idling") end)
+    end
+    pcall(self.ReSetRot, self)
+    self:GotoState("Attack3")
+    return 1
+  end,
+  recover = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" then return end
+    self.targetHandle = Enemy.SearchAttackEntity(self.myHandle, SEARCH_TYPE_NEAR)
+    self:GotoState("BeforeAttackIdling")
+  end,
+}
 
 -- Experiment 221: growing chance to flee per hit.
 cfg.b20ls00 = { limit = 8, fireSeq = { 0, "coin" }, pre = dmgCountPre }
 
--- Maleficent: vanilla teleports / counters after only 3 hits.
+-- Maleficent: vanilla teleports / staff-attacks after only 3 hits - but only
+-- from OnDamage, which the engine asks on the first hit of a combo alone, so
+-- an unbroken combo could loop her.  The counter below is her own pair of
+-- moves, fired per hit / from the watchdog.
 cfg.b01sb00 = {
   limit = 9,
   fire = "real",
+  iframes = 18,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" or s == "Teleport" or s == "StaffAttack" or s == "BeginBarrier"
+       or s == "BuildingBarrier" or s == "CheckBarrierComplete" then return 0 end
+    if self.stack ~= nil and type(self.stack.getn) == "function" and self.stack:getn() <= 0 then
+      if s ~= nil then self.stack:push(s) else self.stack:push("IdlingA") end
+    end
+    if Script.Random() < 0.5 and type(self.ChangeWarpState) == "function" then
+      self:ChangeWarpState()
+    else
+      self:GotoState("StaffAttack")
+    end
+    if type(self.dmgCount) == "number" then self.dmgCount = 0 end
+    pcall(function() Enemy.SetFaceAnim(self.myHandle, 3, 2) end)
+    return 1
+  end,
   pre = function(self, firing)
     if type(self.dmgCount) == "number" then
       if firing then self.dmgCount = 99 else self.dmgCount = 0 end
@@ -170,10 +247,37 @@ cfg.b52ex00 = {
 }
 
 -- Zack (all three versions share one script).  vanilla: one hit counter for the
--- whole fight, counter move at 8-10 hits; a roll on every launching hit.
+-- whole fight, counter move at 8-10 hits - but it lives in OnDamage, which the
+-- engine only asks on the first hit of a combo, so an unbroken combo could loop
+-- him forever.  The counter below is his own move set, fired per hit / from the
+-- watchdog with roughly his own odds.
+local function zackCounter(self)
+  if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return 0 end
+  local s = self:GetState()
+  if s == "Bushinhazan" or s == "Climbhazard" or s == "BackJump_Short" or s == "Hakougeki"
+     or s == "BackJump_Short_Cancel" or s == "Dead" or s == "Appear" then return 0 end
+  if self.stack == nil then return 0 end
+  self.stack:clear()
+  self.stack:push("Move")
+  local r = Script.Random()
+  if r < 0.4 then
+    self.stack:push("Climbhazard")
+    self.stack:push("BackJump_Short")
+  elseif r < 0.7 then
+    self.stack:push("Hakougeki")
+    self.stack:push("BackJump_Short_Cancel")
+  else
+    self.stack:push("BackJump_Short")
+  end
+  self:GotoState(self.stack:pop(1))
+  if type(self.damageCnt) == "number" then self.damageCnt = 0 end
+  return 1
+end
 local zack = {
   limit = 9,
   fire = "real",
+  iframes = 18,
+  counter = zackCounter,
   pre = function(self, firing)
     if type(self.damageCnt) == "number" then
       if firing then self.damageCnt = 99 else self.damageCnt = 0 end
@@ -186,9 +290,24 @@ cfg.b60vs00 = zack
 
 -- Hades (story and Mirage Arena).  vanilla: counters at the 7th hit in a row on the
 -- same spot.  (While he burns red he ignores hits; that stays.)
+local function hadesCounter(self)
+  if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return 0 end
+  local s = self:GetState()
+  if s == "Watching" or s == "Dead" or s == "Freeze" or s == "Appear" or s == "BladesCrossing"
+     or s == "MegaFire" or s == "FingernailofFire" or s == "NoRiaFingernailofFire" then return 0 end
+  if Script.Random() < 0.5 then
+    self:GotoState("BladesCrossing")
+  else
+    self:GotoState("NoRiaFingernailofFire")
+  end
+  if type(self.sameDamageCont) == "number" then self.sameDamageCont = 0 end
+  return 1
+end
 local hades = {
   limit = 9,
   fire = "real",
+  iframes = 18,
+  counter = hadesCounter,
   pre = function(self, firing)
     if type(self.sameDamageCont) ~= "number" then return end
     if firing then
@@ -222,7 +341,7 @@ cfg.b40ex00 = {
 -- he answers with his burst.  Here the burst comes when the revenge value is reached.
 cfg.b85vs00 = {
   limit = 14,
-  decay = 300,          -- vanilla forgets the string after 10 s without a hit
+  grace = 60, drain = 0.05,     -- vanilla forgets a string of hits over ~10 s
   armored = true,
   quiet = "real",
   fire = "real",

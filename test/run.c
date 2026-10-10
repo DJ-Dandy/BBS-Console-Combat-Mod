@@ -277,6 +277,7 @@ static void t_ether(void) {
 extern float *test_charge_seconds(void), *test_haste_bonus(int atk); extern const char *test_haste_help(int atk);
 extern int *test_fresh(void);
 extern const char *test_berserk_help(void);
+extern int *test_combo_master(void); extern const char *test_cm_help(void);
 static u8 *slurp(const char *fn, size_t *n);
 static int charge_ticks(int magic, int attack) {
     pl[0x4a3 + G(u8, 0x814900 + 0x1d0 * 0x18 + 7)] = (u8)magic;
@@ -308,9 +309,13 @@ static void t_haste(void) {
     }
     printf("\n");
     CHECK(base >= 1500 && base <= 1501, "no ability: 25 s (%d ticks)", base);
-    { int n = charge_ticks(0, 2); CHECK(n >= 1363 && n <= 1365, "Attack Haste keeps 0.05 a copy: two -> %d ticks", n); }
+    CHECK(*test_combo_master() == 1, "Attack Haste is Combo Master by default");
+    { int n = charge_ticks(0, 2); CHECK(n == base, "as Combo Master it does nothing to the charge (%d ticks)", n); }
+    *test_combo_master() = 0;
+    { int n = charge_ticks(0, 2); CHECK(n >= 1363 && n <= 1365, "ComboMaster=0: Attack Haste keeps 0.05 a copy: two -> %d ticks", n); }
     { int n = charge_ticks(3, 2); CHECK(n >= 1200 && n <= 1201, "both add up: 1.25 -> %d ticks", n); }
     *test_haste_bonus(1) = 0; { int n = charge_ticks(0, 5); CHECK(n == base, "AttackHasteBonus = 0: no effect (%d)", n); } *test_haste_bonus(1) = 0.05f;
+    *test_combo_master() = 1;
     charge_ticks(0, 0);
 
     /* the texts: the game's "file is in memory" call (CRsrcCTD vtable slot 1), on the real files */
@@ -325,12 +330,12 @@ static void t_haste(void) {
     #define NAME(id) G(const char*, 0x814908 + (u32)(id) * 0x18)
     CHECK(NAME(0x1d0) && !strcmp(NAME(0x1d0), "MP Haste"), "name: %s", NAME(0x1d0) ? NAME(0x1d0) : "-");
     CHECK(NAME(0x1d0) == was, "written in the file itself");
-    CHECK(NAME(0x1cf) && !strcmp(NAME(0x1cf), "MP Haste") && NAME(0x1cf) != NAME(0x1d0), "Attack Haste has the same name: %s", NAME(0x1cf) ? NAME(0x1cf) : "-");
+    CHECK(NAME(0x1cf) && !strcmp(NAME(0x1cf), "Combo Master") && NAME(0x1cf) == ctd_find(names, 0xfa01cf), "Attack Haste is Combo Master, in the file itself: %s", NAME(0x1cf) ? NAME(0x1cf) : "-");
     CHECK(NAME(0x1d9) && !strcmp(NAME(0x1d9), "Berserker") && !strcmp(NAME(0x1d8), "Dark Screen") && !strcmp(NAME(0x1da), "Defender"), "Reload Boost is Berserker: %s", NAME(0x1d9) ? NAME(0x1d9) : "-");
     CHECK(!strcmp(NAME(0x1ce), ctd_find(names, 0xfa01ce)) && !strcmp(NAME(0x1d1), "Combo F Boost") && !strcmp(NAME(0x92), "Cure") && !strcmp(NAME(0x1f1), ctd_find(names, 0xfa01f1)),
           "the names around them are the game's (%s / %s)", NAME(0x1ce), NAME(0x1d1));
     ready(o1);
-    CHECK(!strcmp(NAME(0x1d0), "MP Haste") && !strcmp(NAME(0x1cf), "MP Haste"), "a second call changes nothing");
+    CHECK(!strcmp(NAME(0x1d0), "MP Haste") && !strcmp(NAME(0x1cf), "Combo Master"), "a second call changes nothing");
     const char *h0 = ctd_find(help, 0x32020d), *h1 = ctd_find(help, 0x32020c), *ha = ctd_find(help, 0x32020b), *hb = ctd_find(help, 0x32020e);
     CHECK(h0 && !strncmp(h0, "Shortens the reload time for all magic commands", 47), "the game's description");
     CHECK(h1 && !strncmp(h1, "Shortens the reload time for all attack commands", 48), "the game's description of Attack Haste");
@@ -338,7 +343,10 @@ static void t_haste(void) {
     u8 *o2 = calloc(1, 0x100); *(u8**)(o2 + 0x70) = help; ready(o2);
     printf("  description: %s\n", h0);
     CHECK(!strcmp(h0, test_haste_help(0)) && strlen(h0) <= room && strstr(h0, "5% faster"), "description replaced (%u of %u bytes)", (unsigned)strlen(h0), (unsigned)room);
-    CHECK(!strcmp(h1, test_haste_help(1)) && strlen(h1) <= room1 && !strcmp(h1, h0), "Attack Haste: the same description (%u of %u bytes)", (unsigned)strlen(h1), (unsigned)room1);
+    printf("  Combo Master: %s\n", h1);
+    CHECK(!strcmp(h1, test_cm_help()) && strlen(h1) <= room1 && strstr(h1, "miss"), "Combo Master's description (%u of %u bytes)", (unsigned)strlen(h1), (unsigned)room1);
+    { int w = 0, m = 0, lines = 1; for (const char *c = h1; *c; c++) { if (*c == '\n') { lines++; w = 0; } else if (++w > m) m = w; }
+      CHECK(lines <= 3 && m <= 58, "Combo Master's fits the help box: %d lines, longest %d", lines, m); }
     { int w = 0, m = 0, lines = 1; for (const char *c = h0; *c; c++) { if (*c == '\n') { lines++; w = 0; } else if (++w > m) m = w; }
       CHECK(lines <= 3 && m <= 58, "it fits the help box: %d lines, longest %d", lines, m); }
     CHECK(!strcmp(ha, a0) && !strcmp(hb, b0), "the descriptions around them are the game's");
@@ -348,12 +356,12 @@ static void t_haste(void) {
       CHECK(!strncmp(ctd_find(help, 0x320215), "Increases your resistance to darkness", 37) && !strncmp(ctd_find(help, 0x320217), "Increases your Defense", 22), "its neighbours are the game's"); }
     /* an ability whose bonus is 0 keeps the game's texts */
     { size_t n2, h2; u8 *nm2 = slurp(nf, &n2), *hp2 = slurp(hf, &h2);
-      *test_haste_bonus(1) = 0;
+      *test_haste_bonus(1) = 0; *test_combo_master() = 0;
       u8 *o3 = calloc(1, 0x100); *(u8**)(o3 + 0x70) = nm2; ready(o3);
       u8 *o4 = calloc(1, 0x100); *(u8**)(o4 + 0x70) = hp2; ready(o4);
       CHECK(!strcmp(NAME(0x1cf), "Attack Haste") && !strcmp(NAME(0x1d0), "MP Haste"), "AttackHasteBonus = 0: it stays Attack Haste (%s)", NAME(0x1cf));
       CHECK(!strncmp(ctd_find(hp2, 0x32020c), "Shortens the reload time for all attack", 39) && !strncmp(ctd_find(hp2, 0x32020d), "Makes MP", 8), "... with its own description");
-      *test_haste_bonus(1) = 0.05f; }
+      *test_haste_bonus(1) = 0.05f; *test_combo_master() = 1; }
     CHECK(*(u32*)(o2 + 0xb0) == 0x320000 && *(u32*)(o1 + 0xb0) == 0xfa0000, "the game's own set-up ran");
     /* the game's lookup of an ability's description gives the new text: 1401b3d80 walks the loaded files */
     printf("t_haste done\n");
@@ -1257,6 +1265,45 @@ static void t_tex(void) {
     const char *out = getenv("BBS_GAUGE_OUT");
     if (out) { f = fopen(out, "wb"); fwrite(pix, 1, sz, f); fclose(f); }
     printf("t_tex done\n");
+}
+/* Combo Master: the window of the normal Attack combo (the game's 14021c140, through the hooked call at 22902e)
+   opens on a whiff once the swing has landed, only with the ability, and the "connected" bit is put back */
+static void t_combo(void) {
+    u8 *p = calloc(1, 0x800), *phys = calloc(1, 0x200), *cm = calloc(1, 0x200), *rec = calloc(1, 0x28);
+    rec[0xc] = 25; rec[0xd] = 11; rec[0x1d] = 5;            /* frComboEnable, frChangeEnable, frMark End (Ventus's first hit) */
+    *(u8**)(p + 0x5b8) = rec; *(u8**)(p + 0x80) = phys; *(u8**)(p + 0x390) = cm;
+    u8 slot = G(u8, 0x814907 + 0x1cf * 0x18);
+    u8 *site = RVA(0x22902e);
+    CHECK(site[0] == 0xe8 && (u32)(0x22902e + 5 + *(s32*)(site + 1)) != 0x21c140, "the window call is hooked");
+    u64 (MSABI *win)(u8*, float) = (void*)(site + 5 + *(s32*)(site + 1));
+    #define RESET(sub, req) do { *(int*)(p + 0x5e0) = 1; *(u16*)(p + 0x310) = (sub); *(u32*)(p + 0x320) = 0x40; \
+        *(u32*)(p + 0x318) = 0; *(u32*)(p + 0x31c) = (req); *(u16*)(p + 0x34c) = 1; } while (0)
+    /* without the ability: a whiff gives nothing, as in the game */
+    p[0x4a3 + slot] = 0; RESET(5, 4);
+    u64 r = win(p, 8.0f);
+    CHECK(r == 0 && !(*(u32*)(p + 0x320) & 0x80), "no ability: Attack pressed on a whiff is not taken (%llu)", (unsigned long long)r);
+    /* with it (one copy) */
+    p[0x4a3 + slot] = 1; CHECK(FN(u8, 0x221900, u8*, u16)(p, 0x1cf) == 1, "Combo Master installed");
+    RESET(5, 4); r = win(p, 3.0f);
+    CHECK(r == 0 && !(*(u32*)(p + 0x320) & 0x80), "before the swing lands (frame 3 < 5): not yet");
+    RESET(5, 4); r = win(p, 8.0f);
+    CHECK(r == 1 && (*(u32*)(p + 0x320) & 0x80) && !(*(u32*)(p + 0x320) & 0x20), "frame 8: the next hit is queued, the connected bit is put back (%08x)", *(u32*)(p + 0x320));
+    CHECK(*(int*)(p + 0x5e0) == 1, "queued as an Attack (%d)", *(int*)(p + 0x5e0));
+    RESET(5, 0); r = win(p, 8.0f);
+    CHECK(r == 0 && (*(u32*)(p + 0x318) & 0x40) && !(*(u32*)(p + 0x320) & 0x20), "no button yet: the window is open (318 %08x)", *(u32*)(p + 0x318));
+    RESET(5, 4); r = win(p, 26.0f);
+    CHECK(r == 0 && !(*(u32*)(p + 0x320) & 0x80), "after frComboEnable (26 >= 25): over, as after a hit");
+    /* a real hit is left as it is */
+    RESET(5, 4); *(u32*)(p + 0x320) |= 0x20; r = win(p, 8.0f);
+    CHECK(r == 1 && (*(u32*)(p + 0x320) & 0x20), "a hit keeps its connected bit");
+    /* only the normal combo: deck attacks (sub-state 3) and other categories are not touched */
+    RESET(3, 4); r = win(p, 20.0f);
+    CHECK(r == 0 && !(*(u32*)(p + 0x320) & 0x80), "a deck attack that misses still has no window");
+    /* ComboMaster=0 */
+    *test_combo_master() = 0; RESET(5, 4); r = win(p, 8.0f);
+    CHECK(r == 0 && !(*(u32*)(p + 0x320) & 0x80), "ComboMaster=0: off"); *test_combo_master() = 1;
+    #undef RESET
+    printf("t_combo done\n");
 }
 /* the three bundled mods: code equals the old exe patch, data files end up as the old mods' payloads */
 extern void test_cam_dist(float d); extern u32 test_crc(const u8 *p, size_t n); extern int test_lua_swap(const char **buf, size_t *n);
@@ -2614,6 +2661,7 @@ int main(int argc, char **argv) {
     bad |= run("t_sclist", t_sclist);
     bad |= run("t_status", t_status);
     bad |= run("t_sccamp", t_sccamp);
+    bad |= run("t_combo", t_combo);
     bad |= run("t_bundle", t_bundle);
     bad |= run("t_menu", t_menu);
     return bad || !ok;

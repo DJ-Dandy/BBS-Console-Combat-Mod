@@ -763,3 +763,17 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 - bundle.c also replaces the first Revenge Value build of Factory.lub (10208 bytes), so that the old mod left
   enabled in the Mod Manager does not hide the bosses added later.
 - Not tested through the Mod Manager by me (no access to the user's OpenKH folder).
+
+## Camera distance and tilt limits ([Camera])
+- Player/boss camera files (PCam?000.bin, BCam????.bin, 112 bytes): header (FOV at 0x8), then two 0x30 chunks
+  (Normal at 0x10, Extended at 0x40) with eye at +0x10 and aim at +0x20.  `Distance` moves the eye towards the aim
+  point after the KH2 Camera bytes are applied (FOV and look-at unchanged); the result's crc is remembered so a
+  reloaded resource is not scaled twice.  Default 0.9.
+- BBS tilt clamp: FUN_14022d790 stores -30 deg (0xbf060a92) to camera+0x344 and +45 deg (0x3f490fdb) to +0x348
+  (instructions at 22dae3 / 22daf0, immediates at 22dae9 / 22daf6); FUN_14022c0b0 clamps the stick tilt offset
+  (+0x2b0) so base pitch + offset stays inside them.  Positive = camera above looking down.
+- KH2 (verified in kh2.exe): the field camera reads the pad only for yaw (pad bits 0x14/0x15, +/-3 deg/frame in
+  1403a9250 / 1403a70a0 -> 1403b7a80) and for movement direction (1403a8fa0).  The pitch component of its angle
+  (+0x680) is only ever set by scripted/auto code, never from the stick.  The +/-45 deg found at gm::CAMERA+0xe2c is
+  ACTION_NMGUN (a minigame camera's yaw limit, pitch +/-15 there).  So KH2 has no wider tilt range to copy;
+  `PitchLow`/`PitchHigh` stay at the game's values unless changed.

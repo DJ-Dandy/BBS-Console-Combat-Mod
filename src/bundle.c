@@ -16,6 +16,19 @@ extern char g_dir[MAX_PATH], g_ini[MAX_PATH + 32];
 extern int g_debug;
 static int c_combo = 1, c_camera = 1, c_revenge = 1;
 
+/* [Camera]: on top of the KH2 Camera files.  Distance scales how far the camera sits (eye pulled towards the
+   aim point, so the viewing angle and FOV stay); the pitch limits are the player camera's hard clamp on how
+   far the right stick can tilt it: Low (camera below, looking up) and High (camera above, looking down).
+   BBS clamps to [-30, +45] degrees (set in FUN_14022d790).  KH2's field camera has no manual tilt at all: it only
+   reads the pad for yaw (3 deg/frame, 1403a9250) and the height follows automatically. */
+static float c_cam_dist = 0.9f, c_pitch_min = -30.0f, c_pitch_max = 45.0f;
+static u32 cam_scaled_crc[64];
+#define DEG2RAD 0.01745329252f              /* the same constant KH2 uses (0x3c8efa35) */
+#define PITCH_MIN_IMM 0x22dae9              /* FUN_14022d790: mov [rdi+344h], 0bf060a92h (-30 deg), imm at +6 */
+#define PITCH_MAX_IMM 0x22daf6              /*                mov [rdi+348h], 3f490fdbh  (+45 deg), imm at +6 */
+#define PITCH_MIN_OLD 0xbf060a92u
+#define PITCH_MAX_OLD 0x3f490fdbu
+
 #define FACTORY_OLD_SIZE 638
 #define FACTORY_OLD_CRC  0x951b6dfdu
 /* the first Revenge Value build (the standalone mod, still installed through the Mod Manager or its own installer):
@@ -42,6 +55,15 @@ static u32 crc32_(const u8 *p, size_t n) {
     return ~c;
 }
 
+/* PCAM / BCAM: two 0x30 chunks at 0x10 (Normal, Extended), eye at +0x10, aim at +0x20 */
+static void cam_scale(u8 *data) {
+    if (c_cam_dist == 1.0f) return;
+    for (int c = 0; c < 2; c++) {
+        float *eye = (float*)(data + 0x20 + c * 0x30), *aim = (float*)(data + 0x30 + c * 0x30);
+        for (int k = 0; k < 3; k++) eye[k] = aim[k] + (eye[k] - aim[k]) * c_cam_dist;
+    }
+}
+
 /* CRsrcData: +0x10 type (2 = .bin), +0x38 name, +0x70 data, +0x80 size.  Runs on the game's loader threads. */
 static u64 MSABI rsrc_loaded(u8 *r) {
     if (r[0x10] != 2) return 0;
@@ -52,11 +74,18 @@ static u64 MSABI rsrc_loaded(u8 *r) {
     for (unsigned i = 0; i < sizeof df_files / sizeof *df_files; i++) {
         if (size != df_files[i].size || strncmp(name, df_files[i].name, 16) != 0) continue;
         if (df_files[i].group == 0 ? !c_combo : !c_camera) return 0;
+        int cam = df_files[i].group != 0 && i < 64;
         u32 c = crc32_(data, size);
-        if (c == df_files[i].crc_new) { if (g_debug) LOG("bundle: %s already changed", name); return 0; }
-        if (c != df_files[i].crc_old) { LOG("bundle: %s is not the expected original (crc %08x): left alone", name, c); return 0; }
-        for (unsigned k = 0; k < df_files[i].n; k++) data[df_files[i].set[2 * k]] = (u8)df_files[i].set[2 * k + 1];
-        if (g_debug) LOG("bundle: %s patched (%d bytes)", name, df_files[i].n);
+        if (cam && cam_scaled_crc[i] && c == cam_scaled_crc[i]) return 0;     /* this mod's own result */
+        if (c == df_files[i].crc_new) {
+            if (g_debug) LOG("bundle: %s already changed", name);
+        } else if (c != df_files[i].crc_old) {
+            LOG("bundle: %s is not the expected original (crc %08x): left alone", name, c); return 0;
+        } else {
+            for (unsigned k = 0; k < df_files[i].n; k++) data[df_files[i].set[2 * k]] = (u8)df_files[i].set[2 * k + 1];
+            if (g_debug) LOG("bundle: %s patched (%d bytes)", name, df_files[i].n);
+        }
+        if (cam && c_cam_dist != 1.0f) { cam_scale(data); cam_scaled_crc[i] = crc32_(data, size); }
         return 0;
     }
     return 0;
@@ -77,6 +106,26 @@ static int ini_i(const char *key, int def) {
     GetPrivateProfileStringA("Bundle", key, d, b, sizeof b, p);
     return atoi(b);
 }
+static float ini_cam(const char *key, float def) {
+    char b[32], d[32];
+    snprintf(d, sizeof d, "%g", def);
+    GetPrivateProfileStringA("Camera", key, d, b, sizeof b, g_ini);
+    return (float)atof(b);
+}
+static void cam_config(void) {
+    c_cam_dist = ini_cam("Distance", c_cam_dist);
+    if (!(c_cam_dist >= 0.5f && c_cam_dist <= 1.5f)) c_cam_dist = 1.0f;
+    c_pitch_min = ini_cam("PitchLow", c_pitch_min); c_pitch_max = ini_cam("PitchHigh", c_pitch_max);
+    if (!(c_pitch_min >= -80.0f && c_pitch_min <= 0.0f)) c_pitch_min = -30.0f;
+    if (!(c_pitch_max >= 0.0f && c_pitch_max <= 80.0f)) c_pitch_max = 45.0f;
+}
+static void cam_pitch_apply(void) {
+    float lo = c_pitch_min * DEG2RAD, hi = c_pitch_max * DEG2RAD;
+    u32 nlo, nhi; memcpy(&nlo, &lo, 4); memcpy(&nhi, &hi, 4);
+    if (nlo != PITCH_MIN_OLD) patch_u32(PITCH_MIN_IMM, PITCH_MIN_OLD, nlo, "camera pitch low");
+    if (nhi != PITCH_MAX_OLD) patch_u32(PITCH_MAX_IMM, PITCH_MAX_OLD, nhi, "camera pitch high");
+}
+
 /* state of the Combo Flow code: 0 = original, 1 = already present (the old exe patch is installed), -1 = neither */
 static int combo_state(void) {
     int old = 0, neu = 0, n = sizeof cf_code / sizeof *cf_code;
@@ -96,6 +145,7 @@ void bundle_restore_sites(void) {
 }
 int bundle_check(void) {
     c_combo = ini_i("ComboFlow", 1); c_camera = ini_i("Camera", 1); c_revenge = ini_i("RevengeValue", 1);
+    cam_config();
     int bad = 0;
     crc32_((const u8*)"", 0);                    /* build the table now: the hooks run on several threads */
     if (G(u64, VT_SLOT) != (u64)(g_base + VT_STUB)) { LOG("bundle: resource vtable slot does not match"); bad++; }
@@ -119,7 +169,9 @@ void bundle_apply(void) {
         patch_bytes(VT_SLOT, (u8*)&old, (u8*)&f, 8, "rsrc vtable");
     }
     if (c_revenge) hook_call(LUA_CALL, LUA_LOAD, lua_load_hook, "lua load");
-    LOG("bundle: combo flow %d, camera %d, revenge value %d", c_combo, c_camera, c_revenge);
+    if (c_camera) cam_pitch_apply();
+    LOG("bundle: combo flow %d, camera %d (distance %.2f, pitch %.0f..%.0f), revenge value %d",
+        c_combo, c_camera, c_camera ? c_cam_dist : 1.0f, c_pitch_min, c_pitch_max, c_revenge);
 }
 
 #ifndef _WIN32
@@ -129,4 +181,5 @@ int test_lua_swap(const char **buf, size_t *n) {      /* the decision of lua_loa
     return 0;
 }
 u32 test_crc(const u8 *p, size_t n) { return crc32_(p, n); }
+void test_cam_dist(float d) { c_cam_dist = d; memset(cam_scaled_crc, 0, sizeof cam_scaled_crc); }
 #endif

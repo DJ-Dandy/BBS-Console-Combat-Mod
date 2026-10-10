@@ -1259,7 +1259,7 @@ static void t_tex(void) {
     printf("t_tex done\n");
 }
 /* the three bundled mods: code equals the old exe patch, data files end up as the old mods' payloads */
-extern u32 test_crc(const u8 *p, size_t n); extern int test_lua_swap(const char **buf, size_t *n);
+extern void test_cam_dist(float d); extern u32 test_crc(const u8 *p, size_t n); extern int test_lua_swap(const char **buf, size_t *n);
 static u8 *slurp(const char *fn, size_t *n) { FILE *f = fopen(fn, "rb"); if (!f) return NULL; fseek(f, 0, SEEK_END); *n = ftell(f); fseek(f, 0, SEEK_SET); u8 *d = malloc(*n); fread(d, 1, *n, f); fclose(f); return d; }
 static u8 *arc_inner(u8 *arc, const char *name, u32 *len) {
     int cnt = *(s16*)(arc + 6);
@@ -1287,6 +1287,7 @@ static void t_bundle(void) {
     static const struct { const char *env, *inner; u32 crc_new; } F[] = {
         { "BBS_ARC_P00COMMON", "PAtkData.bin", 0x571a7c74 }, { "BBS_ARC_P01INIT", "PCamV000.bin", 0x3f85eb17 },
         { "BBS_ARC_P02INIT", "PCamA000.bin", 0xe8f3d034 } };
+    test_cam_dist(1.0f);
     for (int i = 0; i < 3; i++) {
         const char *fn = getenv(F[i].env); size_t n; u8 *arc = fn ? slurp(fn, &n) : NULL;
         if (!arc) { printf("  (%s skipped: %s not set)\n", F[i].inner, F[i].env); continue; }
@@ -1299,8 +1300,19 @@ static void t_bundle(void) {
         printf("  %s: %u bytes, crc %08x -> %08x\n", F[i].inner, len, before, after);
         CHECK(after == F[i].crc_new, "%s equals the old mod's file", F[i].inner);
         slot(r); CHECK(test_crc(dd, len) == F[i].crc_new, "%s: second pass changes nothing", F[i].inner);
+        if (i > 0) {                                  /* camera files: the default distance pulls the eye in, once */
+            u8 keep[112]; memcpy(keep, dd, 112);
+            test_cam_dist(0.9f); memcpy(dd, keep, 112); slot(r);
+            float *e0 = (float*)(keep + 0x20), *a0 = (float*)(keep + 0x30), *e1 = (float*)(dd + 0x20);
+            CHECK(fabsf(e1[2] - (a0[2] + (e0[2] - a0[2]) * 0.9f)) < 1e-5f && fabsf(e1[1] - (a0[1] + (e0[1] - a0[1]) * 0.9f)) < 1e-5f,
+                  "%s: eye pulled to 0.9 (z %.3f -> %.3f)", F[i].inner, e0[2], e1[2]);
+            CHECK(!memcmp(dd + 8, keep + 8, 4) && !memcmp(dd + 0x30, keep + 0x30, 12), "%s: FOV and aim kept", F[i].inner);
+            u32 once = test_crc(dd, len); slot(r); CHECK(test_crc(dd, len) == once, "%s: not scaled twice", F[i].inner);
+            memcpy(dd, keep, 112); test_cam_dist(1.0f);
+        }
         dd[5] ^= 0x55; u32 odd = test_crc(dd, len); slot(r); CHECK(test_crc(dd, len) == odd, "unknown content is left alone");
     }
+    CHECK(G(u32, 0x22dae9) == 0xbf060a92u && G(u32, 0x22daf6) == 0x3f490fdbu, "camera pitch limits at the game's -30/+45 by default");
     /* other .bin of the same size but another name, and other types, are not touched */
     u8 buf[112]; memset(buf, 7, sizeof buf);
     u8 *r = calloc(1, 0x90); r[0x10] = 2; strcpy((char*)r + 0x38, "PCamV001.bin"); *(u8**)(r + 0x70) = buf; *(u64*)(r + 0x80) = 112;

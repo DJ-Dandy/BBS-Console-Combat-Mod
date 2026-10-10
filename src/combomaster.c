@@ -19,7 +19,10 @@
        (mp.c's hook on that calls combomaster_texts after it).
      - the description: 14041d880, which answers only for 0x1c4..0x1e1 [called at 3f2711 and 3f3562].
      - switching: 14041d2e0(id, copy, on) [3f37f0], again only for 0x1c4..0x1e1; here it switches this one and
-       keeps the choice in the ini ([Combat] ComboMasterOn), so it lasts.
+       keeps the choice in the save itself, like every other ability's: bit 23 of EXP Zero's u32
+       (save 150fa3d08 + 0x18cc + 5 * 4).  That u32's other users mask their own fields - bits 0-20, and 14041de10
+       hands out only bits 14-17 - so the bit is never read or cleared by the game, it goes into the save file with
+       the rest, and a new game starts with it clear: off.  Each save (each character) has its own.
      - the detail page (confirm on an entry, 3f3659): it reads 30-entry tables by id, so for Combo Master the game's
        own "nothing to show" buzzer is taken instead.
 
@@ -56,7 +59,8 @@ static const u32 HELP_CALLS[2] = { 0x3f2711, 0x3f3562 };
 #define REC_ON       (1u << 9)          /* copy 0 switched on */
 
 static int c_enabled = 1;               /* [Combat] ComboMaster: the ability exists at all */
-static int c_on = 0;                    /* [Combat] ComboMasterOn: switched on in the Abilities menu (off at first) */
+#define SAVE_FLAG    G(u32, 0x10fa3d08 + 0x18cc + 5 * 4)   /* EXP Zero's u32 in the save in memory [1403600f0] */
+#define FLAG_ON      (1u << 23)
 static char c_name[48], c_help[256];
 static u32 g_rec;                       /* the ability's u32, as the menu reads it */
 static float g_rowpos[7][2];            /* the menu's row positions, moved out of menu+0x288 */
@@ -74,7 +78,8 @@ static u64 MSABI row_init(Ctx *c) { c->rdi = (u64)g_rowpos[0]; return (u64)(g_ba
 /* the detail page is refused for it (3f3659: mov rax,[rbx+rax*8+0xa8]; then the "seen" test) */
 static const Steal S_cm_detail = { 0x3f3659, 8, 0, {0}, {0}, {0x48,0x8b,0x84,0xc3,0xa8,0x00,0x00,0x00} };
 
-static void rec_update(void) { g_rec = REC_SEEN | REC_LEARNED | (c_on ? REC_ON : 0); }
+static int is_on(void) { return (SAVE_FLAG & FLAG_ON) != 0; }
+static void rec_update(void) { g_rec = REC_SEEN | REC_LEARNED | (is_on() ? REC_ON : 0); }
 static int ini_get(const char *key, int def) {
     char b[32], d[32]; snprintf(d, sizeof d, "%d", def);
     GetPrivateProfileStringA("Combat", key, d, b, sizeof b, g_ini);
@@ -118,10 +123,10 @@ static const char *MSABI help_hook(u8 *cmd) {
 static void MSABI switch_hook(u16 id, u8 copy, s8 on) {
     if (id != CM_ID) { FN(void, SWITCH_FN, u16, u8, s8)(id, copy, on); return; }
     if (copy != 0) return;
-    c_on = on < 0 ? !c_on : on != 0;
+    int now = on < 0 ? !is_on() : on != 0;
+    if (now) SAVE_FLAG |= FLAG_ON; else SAVE_FLAG &= ~FLAG_ON;
     rec_update();
-    WritePrivateProfileStringA("Combat", "ComboMasterOn", c_on ? "1" : "0", g_ini);
-    LOG("combo master: switched %s", c_on ? "on" : "off");
+    LOG("combo master: switched %s", now ? "on" : "off");
 }
 static u64 MSABI detail_hook(Ctx *c) {
     u8 *menu = (u8*)c->rbx;
@@ -133,7 +138,7 @@ static u64 MSABI detail_hook(Ctx *c) {
 void combomaster_texts(u8 *self) {
     if (c_enabled && *(u32*)(self + 0xb0) == 0xfa0000u) NAME_PTR(CM_ID) = c_name;
 }
-int combomaster_on(void) { return c_enabled && c_on; }
+int combomaster_on(void) { return c_enabled && is_on(); }
 
 /* ---- the effect: the normal combo's window ---- */
 static u64 MSABI window_hook(u8 *pl, float frame) {
@@ -155,7 +160,6 @@ static int call_ok(u32 rva, u32 target) {
 }
 int combomaster_check(void) {
     c_enabled = ini_get("ComboMaster", 1);
-    c_on = ini_get("ComboMasterOn", 0) != 0;
     if (!ini_str("ComboMasterName", c_name, sizeof c_name)) snprintf(c_name, sizeof c_name, "Combo Master");
     if (!ini_str("ComboMasterHelp", c_help, sizeof c_help))
         snprintf(c_help, sizeof c_help, "Lets you keep your Attack combo going even when your\nattacks miss.");
@@ -183,11 +187,12 @@ void combomaster_apply(void) {
                  & hook_ctx(&S_cm_row_init, row_init, "ability rows setup (Combo Master)");
     hook_call(WIN_CALL, WIN_FN, window_hook, "combo window (Combo Master)");
     NAME_PTR(CM_ID) = c_name;
-    LOG("combo master: in the Abilities menu, %s", c_on ? "on" : "off");
+    LOG("combo master: in the Abilities menu (on or off per save, off at first)");
 }
 
 #ifndef _WIN32
-int *test_cm_on(void) { return &c_on; }
+int test_cm_on(void) { return is_on(); }
+void test_cm_set(int on) { if (on) SAVE_FLAG |= FLAG_ON; else SAVE_FLAG &= ~FLAG_ON; }
 u32 *test_cm_rec(void) { return &g_rec; }
 const char *test_cm_help(void) { return c_help; }
 void test_cm_append(u8 *menu) { cm_append(menu); }

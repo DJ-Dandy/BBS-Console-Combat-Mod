@@ -781,7 +781,7 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   floor at about -10 deg and the eye is pulled in to the hit point; past that, more tilt slides the camera along the
   floor towards the character.  The -30 limit stopped that ~1.2 m out, so PitchLow defaults to -60 (imm 0xbf860a92).
 
-## Combo Master (src/combomaster.c; `[Combat] ComboMaster`, `ComboMasterOn`, `ComboMasterName`, `ComboMasterHelp`)
+## Combo Master (src/combomaster.c; `[Combat] ComboMaster`, `ComboMasterName`, `ComboMasterHelp`)
 - Asked for: KH's Combo Master as a new ability with a single entry like EXP Zero, unlocked by default.
 - Abilities in the game: command ids 0x1c4..0x1e1, exactly 30 - the size of every table they live in: the save's
   u32 per ability at save+0x18cc (`14041d800`; read as save+0x11bc+id*4), the player's count per slot at pl+0x4a3
@@ -806,13 +806,19 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
     count at +0x94; +0 u32*, +8 id, +0xa group (0 Prize 0x10, 1 Stats 0x0b, 2 Support 0x11),
     +0xb first of group, +0xc/+0xf level, +0xd learned, +0xe possible.  After each call the entry is appended to
     Support with its own u32 (0xc000 known | one copy learned | on bit), +0xd = +0xe = 1: one pip, like EXP Zero.
-    Off until switched on (`ComboMasterOn` 0 by default).
+    Off until switched on, per save (below).
   - row name: `3f1b20` reads the command table's name pointer (140814908 + id*0x18) - set at install and again when
     the names file is loaded (mp.c's CRsrcCTD hook calls combomaster_texts after the game's).
   - description: `14041d880` answers only 0x1c4..0x1e1; its calls at 3f2711 / 3f3562 are hooked.
   - switching: the call of `14041d2e0` at 3f37f0 (cVar 3 in `3f32a0`, after the "learned" checks) is hooked: for
-    0x1c3 it switches the mod's own state and writes `ComboMasterOn` to the ini, so it lasts (one setting for all
-    saves); the list is then rebuilt by the game (`3f2970` -> 3f1ce0 -> appended again).
+    0x1c3 it sets or clears the choice; the list is then rebuilt by the game (`3f2970` -> 3f1ce0 -> appended again).
+  - where the choice is kept: in the save, bit 23 of EXP Zero's u32 (the save in memory is 150fa3d08 [1403600f0],
+    so 150fa3d08 + 0x18cc + 5*4).  Every user of these u32s masks its own fields: bits 0-5 (422de0 recompute),
+    6-8 / 18-20 (41fb70, 41e090), 9-13 (41d2e0), 14-17 (419380, 41c5f0; 41de10 returns only 14-17); the save
+    conversions (1bdbc0 / 1c04a0) copy the whole u32.  So bit 23 is saved and loaded with the rest, is never cleared
+    by the game, and a new game starts with it 0 (off).  The first builds kept one `ComboMasterOn` in the ini for all
+    saves: switched on in one save, it showed on in every other (reported: a late Aqua save off, an early Terra save
+    on when its menu was first opened).
   - detail page (confirm, 3f3659 `mov rax,[rbx+rax*8+0xa8]` before the `test [rax],0xc000`): `3f1550` and the
     300-byte table index by id-0x1c4, so for 0x1c3 the hook goes to the game's own buzzer path (3f3669).
 - The effect: the normal combo's window.  The next hit can only be asked for in `14021c140`; for the Attack category

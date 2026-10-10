@@ -1259,7 +1259,7 @@ static void t_tex(void) {
     printf("t_tex done\n");
 }
 /* Combo Master: a new ability (id 0x1c3) in the camp Abilities menu, and what it does to the normal combo's window */
-extern int *test_cm_on(void); extern u32 *test_cm_rec(void); extern const char *test_cm_help(void);
+extern int test_cm_on(void); extern void test_cm_set(int on); extern u32 *test_cm_rec(void); extern const char *test_cm_help(void);
 extern void test_cm_append(u8 *menu); extern u64 test_cm_detail(u8 *menu);
 extern float *test_cm_rowpos(void); extern u64 test_cm_row(int which, u8 *menu, int row);
 static u8 *call_target(u32 site) { u8 *p = RVA(site); return p + 5 + *(s32*)(p + 1); }
@@ -1297,7 +1297,7 @@ static void t_cm(void) {
     CHECK(*(u16*)(e + 8) == 0x1c3 && e[0xa] == 2 && e[0xb] == 0 && e[0xd] == 1 && e[0xe] == 1 && e[0xc] == 0,
           "Combo Master added last, in Support, one copy learned of one");
     u32 r = **(u32**)e;
-    CHECK(*test_cm_on() == 0 && (r & 0xc000) == 0xc000 && (r >> 6 & 7) == 1 && (r >> 9 & 1) == 0 && (r & 7) == 0, "its u32: known (no NEW badge), learned, off at first (%08x)", r);
+    CHECK(test_cm_on() == 0 && (r & 0xc000) == 0xc000 && (r >> 6 & 7) == 1 && (r >> 9 & 1) == 0 && (r & 7) == 0, "its u32: known (no NEW badge), learned, off at first (%08x)", r);
     test_cm_append(menu); CHECK(*(s16*)(menu + 0x94) == 30, "not added twice");
     /* a 32-entry list (not the game's, just more than room) gets nothing */
     { u8 *m = calloc(1, 0x500); *(s16*)(m + 0x94) = 31; *(u16*)(m + 0xa8 + 30 * 0x10 + 8) = 0x1d0; test_cm_append(m);
@@ -1305,10 +1305,19 @@ static void t_cm(void) {
     /* the hooked calls */
     u8 *site = RVA(0x3f37f0); CHECK(site[0] == 0xe8 && call_target(0x3f37f0) != RVA(0x41d2e0), "the switch call is hooked");
     void (MSABI *sw)(u16, u8, s8) = (void*)call_target(0x3f37f0);
-    sw(0x1c3, 0, 0); CHECK(*test_cm_on() == 0 && !(*test_cm_rec() & 0x200), "switched off (%08x)", *test_cm_rec());
-    sw(0x1c3, 0, 1); CHECK(*test_cm_on() == 1 && (*test_cm_rec() & 0x200), "switched on");
-    sw(0x1c3, 0, -1); CHECK(*test_cm_on() == 0, "-1 flips it"); sw(0x1c3, 0, -1); CHECK(*test_cm_on() == 1, "and back");
-    sw(0x100, 0, 1); CHECK(*test_cm_on() == 1, "another id goes to the game's (which ignores a non-ability)");
+    /* the choice lives in the save: bit 23 of EXP Zero's u32, the game's own fields of it untouched */
+    u32 *exp0 = (u32*)RVA(0x10fa3d08 + 0x18cc + 5 * 4);
+    *exp0 = 0x0007c2ffu & ~0x200000u;                 /* the game's fields 0-20 in use, as on a save with EXP Zero */
+    CHECK(test_cm_on() == 0, "a save without the bit: off");
+    sw(0x1c3, 0, 0); CHECK(test_cm_on() == 0 && !(*test_cm_rec() & 0x200), "switched off (%08x)", *test_cm_rec());
+    sw(0x1c3, 0, 1); CHECK(test_cm_on() == 1 && (*test_cm_rec() & 0x200) && *exp0 == (0x0007c2ffu | 0x800000u), "switched on: bit 23 of the save's EXP Zero u32, nothing else (%08x)", *exp0);
+    sw(0x1c3, 0, -1); CHECK(test_cm_on() == 0 && *exp0 == 0x0007c2ffu, "-1 flips it"); sw(0x1c3, 0, -1); CHECK(test_cm_on() == 1, "and back");
+    sw(0x100, 0, 1); CHECK(test_cm_on() == 1, "another id goes to the game's (which ignores a non-ability)");
+    *exp0 = 0x0007c2ffu; CHECK(test_cm_on() == 0, "another save loaded (its own u32): its own choice, off");
+    *exp0 |= 0x800000u; CHECK(test_cm_on() == 1, "... or on");
+    { u8 *m2 = calloc(1, 0x500); *(s16*)(m2 + 0x94) = 1; *(u16*)(m2 + 0xa8 + 8) = 0x1db; m2[0xa8 + 0xa] = 2; test_cm_append(m2);
+      CHECK((**(u32**)(m2 + 0xb8) & 0x200) != 0, "the menu shows the save's choice"); }
+    *exp0 = 0; CHECK(test_cm_on() == 0, "a new game: off");
     const char *(MSABI *help)(u8*) = (void*)call_target(0x3f2711);
     const char *(MSABI *help2)(u8*) = (void*)call_target(0x3f3562);
     CHECK((void*)help != (void*)RVA(0x41d880) && (void*)help2 != (void*)RVA(0x41d880), "both description calls are hooked");
@@ -1338,9 +1347,9 @@ static void t_cm(void) {
     #define RESET(sub, req) do { *(int*)(p + 0x5e0) = 1; *(u16*)(p + 0x310) = (sub); *(u32*)(p + 0x320) = 0x40; \
         *(u32*)(p + 0x318) = 0; *(u32*)(p + 0x31c) = (req); *(u16*)(p + 0x34c) = 1; } while (0)
     #define QUEUED() (*(u32*)(p + 0x320) & 0x80)
-    *test_cm_on() = 0; RESET(5, 4); u64 rr = win(p, 8.0f);
+    test_cm_set(0); RESET(5, 4); u64 rr = win(p, 8.0f);
     CHECK(rr == 0 && !QUEUED(), "switched off: Attack pressed on a whiff is not taken, as in the game");
-    *test_cm_on() = 1;
+    test_cm_set(1);
     RESET(5, 4); rr = win(p, 3.0f); CHECK(rr == 0 && !QUEUED(), "on, before the swing lands (3 < 5): not yet");
     RESET(5, 4); rr = win(p, 8.0f);
     CHECK(rr == 1 && QUEUED() && !(*(u32*)(p + 0x320) & 0x20) && *(int*)(p + 0x5e0) == 1, "on, frame 8: the next hit is queued, the connected bit is put back (%08x)", *(u32*)(p + 0x320));

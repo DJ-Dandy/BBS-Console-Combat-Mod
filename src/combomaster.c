@@ -4,11 +4,13 @@
    u32 per ability at save+0x18cc, the player a count per slot at pl+0x4a3; FUN_1402218b0 / 14041d810).  So this one
    is not one of them: it is id 0x1c3 (ABILITY_KIND_None, no name, no description, used by nothing as a command) and
    lives only in the camp Abilities menu (CCampAbility), the one place an ability is seen and switched:
-     - 3f1ce0 builds the list: entries of 0x10 bytes at menu+0xa8 (room for 41), the count at +0x94; per entry
+     - 3f1ce0 builds the list: entries of 0x10 bytes at menu+0xa8, room for exactly 30 (menu+0x288 holds the
+       on-screen rows' positions, written by 3f24d0), the count at +0x94; per entry
        +0 the ability's u32 (bits 0-2 in effect, 3-5 level, 6-8 copies learned, 9-13 which copies are on,
        14-15: 0 "???", 1 new, 2 seen, 3 known), +8 id, +0xa group (0 Prize, 1 Stats, 2 Support), +0xb first of its group,
        +0xc level shown, +0xd copies learned, +0xe copies possible, +0xf level.  It is called from three places
-       [3f2979, 3f2f55, 3f39a6]; after each, Combo Master is added at the end of Support, like EXP Zero: one copy,
+       [3f2979, 3f2f55, 3f39a6]; after each, when there is room, Combo Master is added at the end of Support, like
+       EXP Zero: one copy,
        learned from the start, off until switched on.  Its u32 is this file's own.
      - the name: the command table's pointer (140814908 + id * 0x18), which the names file fills when it is loaded
        (mp.c's hook on that calls combomaster_texts after it).
@@ -45,7 +47,7 @@ static const u32 HELP_CALLS[2] = { 0x3f2711, 0x3f3562 };
 #define SWITCH_CALL  0x3f37f0u
 #define WIN_FN       0x21c140u
 #define WIN_CALL     0x22902eu
-#define LIST_MAX     41                 /* entries between menu+0xa8 and the table at +0x338 */
+#define LIST_MAX     30                 /* entries: menu+0xa8 .. +0x288, where the row positions start [3f24d0] */
 #define REC_SEEN     0xc000u          /* 0x4000 new, 0x8000 just seen (dim NEW badge), 0xc000 known [41c5f0] */
 #define REC_LEARNED  (1u << 6)          /* one copy */
 #define REC_ON       (1u << 9)          /* copy 0 switched on */

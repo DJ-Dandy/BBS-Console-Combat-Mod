@@ -1263,21 +1263,34 @@ extern int *test_cm_on(void); extern u32 *test_cm_rec(void); extern const char *
 extern void test_cm_append(u8 *menu); extern u64 test_cm_detail(u8 *menu);
 static u8 *call_target(u32 site) { u8 *p = RVA(site); return p + 5 + *(s32*)(p + 1); }
 static void t_cm(void) {
-    /* the list as 3f1ce0 builds it: the 30 abilities in three groups by category (Prize 0x10, Stats 0x0b, Support 0x11) */
-    u8 *menu = calloc(1, 0x500); static u32 recs[30]; s16 n = 0; const u8 cats[3] = { 0x10, 0x0b, 0x11 };
-    for (int g = 0; g < 3; g++) { int k = 0;
-        for (int i = 0; i < 30; i++) { u16 id = 0x1c4 + i;
-            if (G(u8, 0x814907 + id * 0x18) == 0xff || G(u8, 0x814901 + id * 0x18) != cats[g]) continue;
-            u8 *e = menu + 0xa8 + n * 0x10; *(u32**)e = &recs[i]; *(u16*)(e + 8) = id; e[0xa] = g; e[0xb] = k++ == 0; e[0xe] = G(u8, 0x811083 + id * 0x1e); n++; } }
-    *(s16*)(menu + 0x94) = n;
-    CHECK(n == 30 && G(u8, 0x814901 + 0x1c9 * 0x18) == 0x11 && G(u8, 0x811083 + 0x1c9 * 0x1e) == 1, "30 abilities, EXP Zero is Support with one copy (%d)", n);
-    test_cm_append(menu);
+    /* the list as 3f1ce0 builds it: the 30 abilities in three groups by category (Prize 0x10, Stats 0x0b, Support
+       0x11); EXP Zero only on Critical.  Room for exactly 30 entries (menu+0x288 is the rows' positions). */
+    static u32 recs[30]; const u8 cats[3] = { 0x10, 0x0b, 0x11 };
+    u8 *menu = NULL; s16 n = 0;
+    for (int critical = 1; critical >= 0; critical--) {
+        menu = calloc(1, 0x500); n = 0;
+        for (int g = 0; g < 3; g++) { int k = 0;
+            for (int i = 0; i < 30; i++) { u16 id = 0x1c4 + i;
+                if (G(u8, 0x814907 + id * 0x18) == 0xff || G(u8, 0x814901 + id * 0x18) != cats[g]) continue;
+                if (id == 0x1c9 && !critical) continue;
+                u8 *e = menu + 0xa8 + n * 0x10; *(u32**)e = &recs[i]; *(u16*)(e + 8) = id; e[0xa] = g; e[0xb] = k++ == 0; e[0xe] = G(u8, 0x811083 + id * 0x1e); n++; } }
+        *(s16*)(menu + 0x94) = n;
+        memset(menu + 0x288, 0x5a, 8);                  /* the first row position, which must stay untouched */
+        test_cm_append(menu);
+        if (critical) {
+            CHECK(n == 30 && G(u8, 0x814901 + 0x1c9 * 0x18) == 0x11 && G(u8, 0x811083 + 0x1c9 * 0x1e) == 1, "Critical: 30 abilities with EXP Zero (%d)", n);
+            CHECK(*(s16*)(menu + 0x94) == 30 && menu[0x288] == 0x5a, "Critical: the list is full, nothing added past it (%d)", *(s16*)(menu + 0x94));
+        } else {
+            CHECK(n == 29, "other difficulties: 29 abilities (%d)", n);
+            CHECK(*(s16*)(menu + 0x94) == 30 && menu[0x288] == 0x5a, "Combo Master takes the 30th place, nothing written past it");
+        }
+    }
     u8 *e = menu + 0xa8 + n * 0x10;
-    CHECK(*(s16*)(menu + 0x94) == n + 1 && *(u16*)(e + 8) == 0x1c3 && e[0xa] == 2 && e[0xb] == 0 && e[0xd] == 1 && e[0xe] == 1 && e[0xc] == 0,
-          "Combo Master added last, in Support, one copy learned of one (%d entries)", *(s16*)(menu + 0x94));
+    CHECK(*(u16*)(e + 8) == 0x1c3 && e[0xa] == 2 && e[0xb] == 0 && e[0xd] == 1 && e[0xe] == 1 && e[0xc] == 0,
+          "Combo Master added last, in Support, one copy learned of one");
     u32 r = **(u32**)e;
     CHECK(*test_cm_on() == 0 && (r & 0xc000) == 0xc000 && (r >> 6 & 7) == 1 && (r >> 9 & 1) == 0 && (r & 7) == 0, "its u32: known (no NEW badge), learned, off at first (%08x)", r);
-    test_cm_append(menu); CHECK(*(s16*)(menu + 0x94) == n + 1, "not added twice");
+    test_cm_append(menu); CHECK(*(s16*)(menu + 0x94) == 30, "not added twice");
     /* the hooked calls */
     u8 *site = RVA(0x3f37f0); CHECK(site[0] == 0xe8 && call_target(0x3f37f0) != RVA(0x41d2e0), "the switch call is hooked");
     void (MSABI *sw)(u16, u8, s8) = (void*)call_target(0x3f37f0);

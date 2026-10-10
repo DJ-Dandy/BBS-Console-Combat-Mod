@@ -792,8 +792,12 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 - The new one is id 0x1c3 (ABILITY_KIND_None: empty name and description in CT00500 / CT00100; the code that loads
   0x1c3 as an immediate uses it as a layout sequence number, not a command).  It exists only where an ability is
   seen and switched, the camp Abilities menu (CCampAbility):
-  - list `3f1ce0` (callers 3f2979, 3f2f55, 3f39a6): entries of 0x10 at menu+0xa8 (room for 41 before the 300-byte
-    table at +0x338), count at +0x94; +0 u32*, +8 id, +0xa group (0 Prize 0x10, 1 Stats 0x0b, 2 Support 0x11),
+  - list `3f1ce0` (callers 3f2979, 3f2f55, 3f39a6): entries of 0x10 at menu+0xa8, room for exactly 30: menu+0x288
+    holds the 7 on-screen rows' positions (3f24d0 `lea rdx,[rbx+0x288]`), then the row objects at +0x2c0 / +0x2f8.
+    The first build counted room for 41 and put a 31st entry there: the row positions overwrote it and moving the
+    cursor onto it crashed (3f26ae, reading its u32).  EXP Zero is listed only on Critical (`140360150` = the
+    difficulty byte 150fa0881 == 3), so the list has 29 entries elsewhere and 30 on Critical - no room there.
+    count at +0x94; +0 u32*, +8 id, +0xa group (0 Prize 0x10, 1 Stats 0x0b, 2 Support 0x11),
     +0xb first of group, +0xc/+0xf level, +0xd learned, +0xe possible.  After each call the entry is appended to
     Support with its own u32 (0xc000 known | one copy learned | on bit), +0xd = +0xe = 1: one pip, like EXP Zero.
     Off until switched on (`ComboMasterOn` 0 by default).

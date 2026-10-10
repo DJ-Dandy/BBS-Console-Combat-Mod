@@ -9,7 +9,7 @@
        14-15: 0 "???", 1 new, 2 seen, 3 known), +8 id, +0xa group (0 Prize, 1 Stats, 2 Support), +0xb first of its group,
        +0xc level shown, +0xd copies learned, +0xe copies possible, +0xf level.  It is called from three places
        [3f2979, 3f2f55, 3f39a6]; after each, Combo Master is added at the end of Support, like EXP Zero: one copy,
-       learned from the start, on or off.  Its u32 is this file's own.
+       learned from the start, off until switched on.  Its u32 is this file's own.
      - the name: the command table's pointer (140814908 + id * 0x18), which the names file fills when it is loaded
        (mp.c's hook on that calls combomaster_texts after it).
      - the description: 14041d880, which answers only for 0x1c4..0x1e1 [called at 3f2711 and 3f3562].
@@ -51,7 +51,7 @@ static const u32 HELP_CALLS[2] = { 0x3f2711, 0x3f3562 };
 #define REC_ON       (1u << 9)          /* copy 0 switched on */
 
 static int c_enabled = 1;               /* [Combat] ComboMaster: the ability exists at all */
-static int c_on = 1;                    /* [Combat] ComboMasterOn: switched on in the Abilities menu */
+static int c_on = 0;                    /* [Combat] ComboMasterOn: switched on in the Abilities menu (off at first) */
 static char c_name[48], c_help[256];
 static u32 g_rec;                       /* the ability's u32, as the menu reads it */
 
@@ -139,7 +139,7 @@ static int call_ok(u32 rva, u32 target) {
 }
 int combomaster_check(void) {
     c_enabled = ini_get("ComboMaster", 1);
-    c_on = ini_get("ComboMasterOn", 1) != 0;
+    c_on = ini_get("ComboMasterOn", 0) != 0;
     if (!ini_str("ComboMasterName", c_name, sizeof c_name)) snprintf(c_name, sizeof c_name, "Combo Master");
     if (!ini_str("ComboMasterHelp", c_help, sizeof c_help))
         snprintf(c_help, sizeof c_help, "Lets you keep your Attack combo going even when your\nattacks miss.");

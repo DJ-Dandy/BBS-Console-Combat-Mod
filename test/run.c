@@ -1276,7 +1276,7 @@ static void t_cm(void) {
     CHECK(*(s16*)(menu + 0x94) == n + 1 && *(u16*)(e + 8) == 0x1c3 && e[0xa] == 2 && e[0xb] == 0 && e[0xd] == 1 && e[0xe] == 1 && e[0xc] == 0,
           "Combo Master added last, in Support, one copy learned of one (%d entries)", *(s16*)(menu + 0x94));
     u32 r = **(u32**)e;
-    CHECK((r & 0xc000) == 0xc000 && (r >> 6 & 7) == 1 && (r >> 9 & 1) == 1 && (r & 7) == 0, "its u32: known (no NEW badge), learned, on (%08x)", r);
+    CHECK(*test_cm_on() == 0 && (r & 0xc000) == 0xc000 && (r >> 6 & 7) == 1 && (r >> 9 & 1) == 0 && (r & 7) == 0, "its u32: known (no NEW badge), learned, off at first (%08x)", r);
     test_cm_append(menu); CHECK(*(s16*)(menu + 0x94) == n + 1, "not added twice");
     /* the hooked calls */
     u8 *site = RVA(0x3f37f0); CHECK(site[0] == 0xe8 && call_target(0x3f37f0) != RVA(0x41d2e0), "the switch call is hooked");

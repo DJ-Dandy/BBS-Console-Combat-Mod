@@ -796,6 +796,7 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
     table at +0x338), count at +0x94; +0 u32*, +8 id, +0xa group (0 Prize 0x10, 1 Stats 0x0b, 2 Support 0x11),
     +0xb first of group, +0xc/+0xf level, +0xd learned, +0xe possible.  After each call the entry is appended to
     Support with its own u32 (0xc000 known | one copy learned | on bit), +0xd = +0xe = 1: one pip, like EXP Zero.
+    Off until switched on (`ComboMasterOn` 0 by default).
   - row name: `3f1b20` reads the command table's name pointer (140814908 + id*0x18) - set at install and again when
     the names file is loaded (mp.c's CRsrcCTD hook calls combomaster_texts after the game's).
   - description: `14041d880` answers only 0x1c4..0x1e1; its calls at 3f2711 / 3f3562 are hooked.

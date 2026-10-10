@@ -780,3 +780,40 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 - Tilting down on flat ground the camera's map ray (look point -> eye, FUN_1401ffa90 in FUN_14022b110) hits the
   floor at about -10 deg and the eye is pulled in to the hit point; past that, more tilt slides the camera along the
   floor towards the character.  The -30 limit stopped that ~1.2 m out, so PitchLow defaults to -60 (imm 0xbf860a92).
+
+## Combo Master (src/combomaster.c; `[Combat] ComboMaster`, `ComboMasterOn`, `ComboMasterName`, `ComboMasterHelp`)
+- Asked for: KH's Combo Master as a new ability with a single entry like EXP Zero, unlocked by default.
+- Abilities in the game: command ids 0x1c4..0x1e1, exactly 30 - the size of every table they live in: the save's
+  u32 per ability at save+0x18cc (`14041d800`; read as save+0x11bc+id*4), the player's count per slot at pl+0x4a3
+  (filled each frame by `1402218b0` from bits 0-2 through `14041d810`).  The u32: bits 0-2 in effect, 3-5 level,
+  6-8 copies learned (`14041fb70`; max per id at `140811083 + id*0x1e`, EXP Zero 1), 9-13 copy on/off
+  (`14041d2e0(id, copy, mode)`, mode <0 flips), 14-15 0 "???" / 1 new / 2 seen / 3 known (`419380` sets new,
+  `41c5f0` turns seen into known on leaving the menu).  No free id inside the block, so a 31st cannot be stored there.
+- The new one is id 0x1c3 (ABILITY_KIND_None: empty name and description in CT00500 / CT00100; the code that loads
+  0x1c3 as an immediate uses it as a layout sequence number, not a command).  It exists only where an ability is
+  seen and switched, the camp Abilities menu (CCampAbility):
+  - list `3f1ce0` (callers 3f2979, 3f2f55, 3f39a6): entries of 0x10 at menu+0xa8 (room for 41 before the 300-byte
+    table at +0x338), count at +0x94; +0 u32*, +8 id, +0xa group (0 Prize 0x10, 1 Stats 0x0b, 2 Support 0x11),
+    +0xb first of group, +0xc/+0xf level, +0xd learned, +0xe possible.  After each call the entry is appended to
+    Support with its own u32 (0xc000 known | one copy learned | on bit), +0xd = +0xe = 1: one pip, like EXP Zero.
+  - row name: `3f1b20` reads the command table's name pointer (140814908 + id*0x18) - set at install and again when
+    the names file is loaded (mp.c's CRsrcCTD hook calls combomaster_texts after the game's).
+  - description: `14041d880` answers only 0x1c4..0x1e1; its calls at 3f2711 / 3f3562 are hooked.
+  - switching: the call of `14041d2e0` at 3f37f0 (cVar 3 in `3f32a0`, after the "learned" checks) is hooked: for
+    0x1c3 it switches the mod's own state and writes `ComboMasterOn` to the ini, so it lasts (one setting for all
+    saves); the list is then rebuilt by the game (`3f2970` -> 3f1ce0 -> appended again).
+  - detail page (confirm, 3f3659 `mov rax,[rbx+rax*8+0xa8]` before the `test [rax],0xc000`): `3f1550` and the
+    300-byte table index by id-0x1c4, so for 0x1c3 the hook goes to the game's own buzzer path (3f3669).
+- The effect: the normal combo's window.  The next hit can only be asked for in `14021c140`; for the Attack category
+  that needs pl+0x320 bit 0x20 "connected" (cmd+0x60 & 0x1000 aside), set only by the weapon hit handler
+  [293d9d / 293dee] or a fired bullet [229021].  Normal combo (sub-state 5): the window opens with 0x318 |= 0x40, valid
+  until frComboEnable (+0xc); a queued command starts at frChangeEnable (+0xd).  The bit also ends the forward lunge
+  (228f39 passes "not connected" to the movement call), so it is lent only for the window call at 22902e (rcx = pl,
+  xmm1 = frame): ability on, category 1, sub-state 5, not connected, frame >= frMark End (+0x1d, where the swing
+  lands; melee records have frTrigger 0) - set before the call, cleared after (21c140 writes 0x320 back from its own
+  copy when it queues).  Other readers of the bit (magic states 2674d0 / 2687d0) never see it.
+  Same as after a real hit: the open window also takes guard / dodge / other commands, so a whiffed normal-combo hit
+  can be cancelled into them (vanilla: nothing until the animation ends).
+- Test: `t_cm` (append on a list built like 3f1ce0 from the exe's tables, the switch / description / detail hooks,
+  the name through the real names file, the window through the game's 21c140 at frames 3 / 8 / 26, real hit and deck
+  attack untouched).  Not seen in the game by me: the menu itself (the list builder needs the save and deck).

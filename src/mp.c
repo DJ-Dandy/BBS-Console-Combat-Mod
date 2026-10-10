@@ -766,6 +766,7 @@ static u64 (MSABI *o_ctd_ready)(u8 *self, u64 a, u64 b, u64 c);
 static u64 MSABI ctd_ready_hook(u8 *self, u64 a, u64 b, u64 c) {
     u64 r = o_ctd_ready(self, a, b, c);
     haste_texts(self);
+    combomaster_texts(self);
     return r;
 }
 /* ---------------- per frame (the player gauge's update, 209f20) ---------------- */
@@ -823,7 +824,7 @@ int mod_install(void) {
     if (!call_ok(0x206a6e, 0x1ce550)) { LOG("call site 206a6e does not match"); bad++; }
     if ((c_desc_cost || c_ether) && !call_ok(DESC_CALL, MSG_FIND)) { LOG("description site does not match"); bad++; }
     if (c_floor && !call_ok(FLOOR_CALL, HAS_ABILITY)) { LOG("damage floor site does not match"); bad++; }
-    if ((c_haste_rename || c_berserk_rename) && G(u64, VT_CTD_READY) != (u64)(g_base + FN_CTD_READY)) { LOG("message file vtable does not match"); bad++; }
+    if (G(u64, VT_CTD_READY) != (u64)(g_base + FN_CTD_READY)) { LOG("message file vtable does not match"); bad++; }
     if (c_berserk_pct > 0 && !call_ok(DMG_CALL, DMG_FN)) { LOG("damage site does not match"); bad++; }
     if (!bundle_check()) bad++;
     if (!menu_check()) bad++;
@@ -834,6 +835,7 @@ int mod_install(void) {
     if (!shortcut_check()) bad++;
     if (!sccamp_check()) bad++;
     if (!guard_check()) bad++;
+    if (!combomaster_check()) bad++;
     if (bad) { LOG("this is not the game build the mod was written for: nothing changed"); g_patch_errors += bad; return 0; }
     if (c_desc_cost || c_ether) hook_call(DESC_CALL, MSG_FIND, desc_hook, "descriptions (MP cost, MP items)");
     if (c_floor) {
@@ -841,7 +843,7 @@ int mod_install(void) {
         LOG("combat: EXP Zero's minimum damage applies without the ability %s", c_floor >= 2 ? "on every difficulty" : "on Critical");
     }
     if (c_berserk_pct > 0) hook_call(DMG_CALL, DMG_FN, damage_hook, "damage (Berserker)");
-    if (c_haste_rename || c_berserk_rename) {
+    {   /* always: MP Haste / Berserker texts and the Combo Master name come through here */
         u64 old = (u64)(g_base + FN_CTD_READY), f = (u64)ctd_ready_hook;
         o_ctd_ready = (void*)old;
         patch_bytes(VT_CTD_READY, (u8*)&old, (u8*)&f, 8, "message file ready");
@@ -855,6 +857,7 @@ int mod_install(void) {
     shortcut_apply();
     sccamp_apply();
     guard_apply();
+    combomaster_apply();
 
     o_gauge_update = hook_fn(&S_gauge_update, gauge_update_hook, "gauge_update");
     o_gauge_dtor   = hook_fn(&S_gauge_dtor, gauge_dtor_hook, "gauge_dtor");

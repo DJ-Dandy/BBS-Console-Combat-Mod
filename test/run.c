@@ -1258,6 +1258,76 @@ static void t_tex(void) {
     if (out) { f = fopen(out, "wb"); fwrite(pix, 1, sz, f); fclose(f); }
     printf("t_tex done\n");
 }
+/* Combo Master: a new ability (id 0x1c3) in the camp Abilities menu, and what it does to the normal combo's window */
+extern int *test_cm_on(void); extern u32 *test_cm_rec(void); extern const char *test_cm_help(void);
+extern void test_cm_append(u8 *menu); extern u64 test_cm_detail(u8 *menu);
+static u8 *call_target(u32 site) { u8 *p = RVA(site); return p + 5 + *(s32*)(p + 1); }
+static void t_cm(void) {
+    /* the list as 3f1ce0 builds it: the 30 abilities in three groups by category (Prize 0x10, Stats 0x0b, Support 0x11) */
+    u8 *menu = calloc(1, 0x500); static u32 recs[30]; s16 n = 0; const u8 cats[3] = { 0x10, 0x0b, 0x11 };
+    for (int g = 0; g < 3; g++) { int k = 0;
+        for (int i = 0; i < 30; i++) { u16 id = 0x1c4 + i;
+            if (G(u8, 0x814907 + id * 0x18) == 0xff || G(u8, 0x814901 + id * 0x18) != cats[g]) continue;
+            u8 *e = menu + 0xa8 + n * 0x10; *(u32**)e = &recs[i]; *(u16*)(e + 8) = id; e[0xa] = g; e[0xb] = k++ == 0; e[0xe] = G(u8, 0x811083 + id * 0x1e); n++; } }
+    *(s16*)(menu + 0x94) = n;
+    CHECK(n == 30 && G(u8, 0x814901 + 0x1c9 * 0x18) == 0x11 && G(u8, 0x811083 + 0x1c9 * 0x1e) == 1, "30 abilities, EXP Zero is Support with one copy (%d)", n);
+    test_cm_append(menu);
+    u8 *e = menu + 0xa8 + n * 0x10;
+    CHECK(*(s16*)(menu + 0x94) == n + 1 && *(u16*)(e + 8) == 0x1c3 && e[0xa] == 2 && e[0xb] == 0 && e[0xd] == 1 && e[0xe] == 1 && e[0xc] == 0,
+          "Combo Master added last, in Support, one copy learned of one (%d entries)", *(s16*)(menu + 0x94));
+    u32 r = **(u32**)e;
+    CHECK((r & 0xc000) == 0xc000 && (r >> 6 & 7) == 1 && (r >> 9 & 1) == 1 && (r & 7) == 0, "its u32: known (no NEW badge), learned, on (%08x)", r);
+    test_cm_append(menu); CHECK(*(s16*)(menu + 0x94) == n + 1, "not added twice");
+    /* the hooked calls */
+    u8 *site = RVA(0x3f37f0); CHECK(site[0] == 0xe8 && call_target(0x3f37f0) != RVA(0x41d2e0), "the switch call is hooked");
+    void (MSABI *sw)(u16, u8, s8) = (void*)call_target(0x3f37f0);
+    sw(0x1c3, 0, 0); CHECK(*test_cm_on() == 0 && !(*test_cm_rec() & 0x200), "switched off (%08x)", *test_cm_rec());
+    sw(0x1c3, 0, 1); CHECK(*test_cm_on() == 1 && (*test_cm_rec() & 0x200), "switched on");
+    sw(0x1c3, 0, -1); CHECK(*test_cm_on() == 0, "-1 flips it"); sw(0x1c3, 0, -1); CHECK(*test_cm_on() == 1, "and back");
+    sw(0x100, 0, 1); CHECK(*test_cm_on() == 1, "another id goes to the game's (which ignores a non-ability)");
+    const char *(MSABI *help)(u8*) = (void*)call_target(0x3f2711);
+    const char *(MSABI *help2)(u8*) = (void*)call_target(0x3f3562);
+    CHECK((void*)help != (void*)RVA(0x41d880) && (void*)help2 != (void*)RVA(0x41d880), "both description calls are hooked");
+    u8 cmdbuf[8] = {0}; *(u16*)(cmdbuf + 6) = 0x1c3;
+    CHECK(!strcmp(help(cmdbuf), test_cm_help()) && help2(cmdbuf) == help(cmdbuf) && strstr(help(cmdbuf), "miss"), "its description: %s", help(cmdbuf));
+    *(u16*)(cmdbuf + 6) = 0x1c0; CHECK(help(cmdbuf) == (const char*)RVA(0x6e0cb0), "another id: the game's answer");
+    { int w = 0, m = 0, lines = 1; for (const char *c = test_cm_help(); *c; c++) { if (*c == '\n') { lines++; w = 0; } else if (++w > m) m = w; }
+      CHECK(lines <= 3 && m <= 58, "it fits the help box: %d lines, longest %d", lines, m); }
+    /* the detail page: the buzzer for Combo Master, the game's page for the others */
+    CHECK(*(u8*)RVA(0x3f3659) == 0xe9, "the detail site is hooked");
+    *(s16*)(menu + 0x8e) = n; CHECK(test_cm_detail(menu) == (u64)RVA(0x3f3669), "Combo Master: no detail page (buzzer)");
+    *(s16*)(menu + 0x8e) = 3; CHECK(test_cm_detail(menu) == 0, "another ability: the game's detail page");
+    /* the name: through the names file (CRsrcCTD ready), when the file is there */
+    { const char *nf = getenv("BBS_MSG_NAMES"); size_t nn; u8 *names = nf ? slurp(nf, &nn) : NULL;
+      if (names) { u64 (MSABI *ready)(u8*) = *(u64 (MSABI**)(u8*))RVA(0x637910);
+          u8 *o = calloc(1, 0x100); *(u8**)(o + 0x70) = names; ready(o);
+          const char *nm = G(const char*, 0x814908 + 0x1c3 * 0x18);
+          CHECK(nm && !strcmp(nm, "Combo Master"), "its name: %s", nm ? nm : "-");
+          CHECK(!strcmp(G(const char*, 0x814908 + 0x1c9 * 0x18), "Zero EXP") && !strcmp(G(const char*, 0x814908 + 0x1c2 * 0x18), "Random"), "the names around it are the game's"); }
+      else printf("  (name skipped: BBS_MSG_NAMES not set)\n"); }
+    /* the effect: the normal combo's window (the game's 14021c140 through the hooked call at 22902e) */
+    u8 *p = calloc(1, 0x800), *phys = calloc(1, 0x200), *cm = calloc(1, 0x200), *rec = calloc(1, 0x28);
+    rec[0xc] = 25; rec[0xd] = 11; rec[0x1d] = 5;            /* frComboEnable, frChangeEnable, frMark End (Ventus's first hit) */
+    *(u8**)(p + 0x5b8) = rec; *(u8**)(p + 0x80) = phys; *(u8**)(p + 0x390) = cm;
+    CHECK(*(u8*)RVA(0x22902e) == 0xe8 && call_target(0x22902e) != RVA(0x21c140), "the window call is hooked");
+    u64 (MSABI *win)(u8*, float) = (void*)call_target(0x22902e);
+    #define RESET(sub, req) do { *(int*)(p + 0x5e0) = 1; *(u16*)(p + 0x310) = (sub); *(u32*)(p + 0x320) = 0x40; \
+        *(u32*)(p + 0x318) = 0; *(u32*)(p + 0x31c) = (req); *(u16*)(p + 0x34c) = 1; } while (0)
+    #define QUEUED() (*(u32*)(p + 0x320) & 0x80)
+    *test_cm_on() = 0; RESET(5, 4); u64 rr = win(p, 8.0f);
+    CHECK(rr == 0 && !QUEUED(), "switched off: Attack pressed on a whiff is not taken, as in the game");
+    *test_cm_on() = 1;
+    RESET(5, 4); rr = win(p, 3.0f); CHECK(rr == 0 && !QUEUED(), "on, before the swing lands (3 < 5): not yet");
+    RESET(5, 4); rr = win(p, 8.0f);
+    CHECK(rr == 1 && QUEUED() && !(*(u32*)(p + 0x320) & 0x20) && *(int*)(p + 0x5e0) == 1, "on, frame 8: the next hit is queued, the connected bit is put back (%08x)", *(u32*)(p + 0x320));
+    RESET(5, 0); rr = win(p, 8.0f); CHECK(rr == 0 && (*(u32*)(p + 0x318) & 0x40) && !(*(u32*)(p + 0x320) & 0x20), "no button yet: the window is open");
+    RESET(5, 4); rr = win(p, 26.0f); CHECK(rr == 0 && !QUEUED(), "after frComboEnable (26 >= 25): over, as after a hit");
+    RESET(5, 4); *(u32*)(p + 0x320) |= 0x20; rr = win(p, 8.0f); CHECK(rr == 1 && (*(u32*)(p + 0x320) & 0x20), "a real hit keeps its connected bit");
+    RESET(3, 4); rr = win(p, 20.0f); CHECK(rr == 0 && !QUEUED(), "a deck attack (sub-state 3) that misses still has no window");
+    #undef RESET
+    #undef QUEUED
+    printf("t_cm done\n");
+}
 /* the three bundled mods: code equals the old exe patch, data files end up as the old mods' payloads */
 extern void test_cam_dist(float d); extern u32 test_crc(const u8 *p, size_t n); extern int test_lua_swap(const char **buf, size_t *n);
 static u8 *slurp(const char *fn, size_t *n) { FILE *f = fopen(fn, "rb"); if (!f) return NULL; fseek(f, 0, SEEK_END); *n = ftell(f); fseek(f, 0, SEEK_SET); u8 *d = malloc(*n); fread(d, 1, *n, f); fclose(f); return d; }
@@ -1279,7 +1349,7 @@ static void t_bundle(void) {
             for (u32 k = 0; k < rs; k++) if (g_base[va + k] != d[ro + k]) diff++;
         }
         printf("  code bytes differing from the original exe: %ld (our own hooks)\n", diff);
-        CHECK(diff > 0 && diff < 260, "only our hook sites differ");
+        CHECK(diff > 0 && diff < 320, "only our hook sites differ");
         CHECK(!memcmp(RVA(0x62f080), d + 0x400 + 0x62e080, 349), "the old Combo Flow routines are not installed (speed.c has the walk-out)");
         CHECK(*(u8*)RVA(0x2291bf) == 0xe9 && *(u8*)RVA(0x26825f) == 0xe9 && *(u8*)RVA(0x26828a) == 0xe9, "its three sites carry our hooks");
     } else printf("  (code comparison skipped: BBS_EXE not set)\n");
@@ -2614,6 +2684,7 @@ int main(int argc, char **argv) {
     bad |= run("t_sclist", t_sclist);
     bad |= run("t_status", t_status);
     bad |= run("t_sccamp", t_sccamp);
+    bad |= run("t_cm", t_cm);
     bad |= run("t_bundle", t_bundle);
     bad |= run("t_menu", t_menu);
     return bad || !ok;

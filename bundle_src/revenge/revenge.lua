@@ -54,9 +54,11 @@ RV.weight = {
   shootlock = 0.3,   -- per shotlock hit
   launch    = 0.5,   -- extra for hits that launch / knock away
 }
-RV.grace    = 60     -- 1 s after the last hit before the gauge drains: a combo's
-                     -- own gaps (0.3 .. 0.9 s) never drain it, as in KH2, where
-                     -- hit-stun blocks the drain outright
+RV.grace    = 90     -- 1.5 s after the last hit before the gauge drains (KH2's
+                     -- pace would be 1 s: a combo's own gaps of 0.3 .. 0.9 s never
+                     -- drain it, hit-stun blocks the drain outright).  Longer on
+                     -- request: BBS bosses stand around between their moves far more
+                     -- than KH2's, and the gauge has to outlast that.
 RV.drain    = 0.1    -- per frame once draining = KH2's 6 hit-units a second
 RV.vary     = 1.0    -- next limit = boss's limit +- up to this, re-rolled per revenge
 RV.watchdog = 12     -- 0.2 s at the limit without a break-out before `counter` is forced from the update

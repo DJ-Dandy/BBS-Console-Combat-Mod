@@ -867,3 +867,5 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 - Vanitas (b63ex00) found in the investigation: his break-out at the limit is Warp2 - vanish, reappear 0.5 m behind
   the player (WarpToTargetBack scales the target's direction by -0.5), one slash (WarpAttack2), back to Idling.
   Unchanged for now; with the gauge kept he breaks out again after a few hits when you go straight back in.
+- Grace before the drain: 60 -> 90 frames (1.5 s) on request - BBS bosses stand around between moves far more than
+  KH2's, so the gauge has to outlast that.  (After a break-out or a recovery the drain still starts at once.)

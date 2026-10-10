@@ -4,8 +4,11 @@
    u32 per ability at save+0x18cc, the player a count per slot at pl+0x4a3; FUN_1402218b0 / 14041d810).  So this one
    is not one of them: it is id 0x1c3 (ABILITY_KIND_None, no name, no description, used by nothing as a command) and
    lives only in the camp Abilities menu (CCampAbility), the one place an ability is seen and switched:
-     - 3f1ce0 builds the list: entries of 0x10 bytes at menu+0xa8, room for exactly 30 (menu+0x288 holds the
-       on-screen rows' positions, written by 3f24d0), the count at +0x94; per entry
+     - 3f1ce0 builds the list: entries of 0x10 bytes at menu+0xa8, the count at +0x94.  The game has room for
+       exactly 30 - on Critical, with EXP Zero, all of it: menu+0x288 holds the 7 on-screen rows' positions (2 floats
+       each).  Those are only ever reached through three `lea reg,[menu+0x288]` [3f2f60 setup, 3f2644 / 3f2657 cursor]
+       (nothing else in the menu, its base class or the helpers it calls touches +0x288..+0x2bf), so they are moved to
+       a buffer of this file's and the list holds 31.  Per entry
        +0 the ability's u32 (bits 0-2 in effect, 3-5 level, 6-8 copies learned, 9-13 which copies are on,
        14-15: 0 "???", 1 new, 2 seen, 3 known), +8 id, +0xa group (0 Prize, 1 Stats, 2 Support), +0xb first of its group,
        +0xc level shown, +0xd copies learned, +0xe copies possible, +0xf level.  It is called from three places
@@ -47,7 +50,7 @@ static const u32 HELP_CALLS[2] = { 0x3f2711, 0x3f3562 };
 #define SWITCH_CALL  0x3f37f0u
 #define WIN_FN       0x21c140u
 #define WIN_CALL     0x22902eu
-#define LIST_MAX     30                 /* entries: menu+0xa8 .. +0x288, where the row positions start [3f24d0] */
+#define LIST_GAME    30                 /* the game's room: menu+0xa8 .. +0x288, where the 7 rows' positions start */
 #define REC_SEEN     0xc000u          /* 0x4000 new, 0x8000 just seen (dim NEW badge), 0xc000 known [41c5f0] */
 #define REC_LEARNED  (1u << 6)          /* one copy */
 #define REC_ON       (1u << 9)          /* copy 0 switched on */
@@ -56,6 +59,17 @@ static int c_enabled = 1;               /* [Combat] ComboMaster: the ability exi
 static int c_on = 0;                    /* [Combat] ComboMasterOn: switched on in the Abilities menu (off at first) */
 static char c_name[48], c_help[256];
 static u32 g_rec;                       /* the ability's u32, as the menu reads it */
+static float g_rowpos[7][2];            /* the menu's row positions, moved out of menu+0x288 */
+static int g_rows_moved;                /* all three sites redirected: the list may hold 31 */
+
+/* the row positions: lea rdx,[rbx+0x288] (rbx = menu + row * 8) twice in 3f24d0, lea rdi,[rsi+0x288] in the setup */
+static const Steal S_cm_row_a = { 0x3f2644, 7, 0, {0}, {0}, {0x48,0x8d,0x93,0x88,0x02,0x00,0x00} };
+static const Steal S_cm_row_b = { 0x3f2657, 7, 0, {0}, {0}, {0x48,0x8d,0x93,0x88,0x02,0x00,0x00} };
+static const Steal S_cm_row_init = { 0x3f2f60, 7, 0, {0}, {0}, {0x48,0x8d,0xbe,0x88,0x02,0x00,0x00} };
+static u64 row_index(Ctx *c) { u64 k = (c->rbx - c->rdi) / 8; return k < 7 ? k : 0; }
+static u64 MSABI row_a(Ctx *c) { c->rdx = (u64)g_rowpos[row_index(c)]; return (u64)(g_base + 0x3f264b); }
+static u64 MSABI row_b(Ctx *c) { c->rdx = (u64)g_rowpos[row_index(c)]; return (u64)(g_base + 0x3f265e); }
+static u64 MSABI row_init(Ctx *c) { c->rdi = (u64)g_rowpos[0]; return (u64)(g_base + 0x3f2f67); }
 
 /* the detail page is refused for it (3f3659: mov rax,[rbx+rax*8+0xa8]; then the "seen" test) */
 static const Steal S_cm_detail = { 0x3f3659, 8, 0, {0}, {0}, {0x48,0x8b,0x84,0xc3,0xa8,0x00,0x00,0x00} };
@@ -81,7 +95,7 @@ static int ini_str(const char *key, char *out, size_t n) {
 static void cm_append(u8 *menu) {
     if (!c_enabled) return;
     s16 *count = (s16*)(menu + 0x94);
-    if (*count < 1 || *count >= LIST_MAX) return;
+    if (*count < 1 || *count >= LIST_GAME + (g_rows_moved ? 1 : 0)) return;
     for (int i = 0; i < *count; i++) if (*(u16*)(menu + 0xa8 + i * 0x10 + 8) == CM_ID) return;
     u8 *e = menu + 0xa8 + *count * 0x10, *last = e - 0x10;
     rec_update();
@@ -153,6 +167,8 @@ int combomaster_check(void) {
     if (!call_ok(SWITCH_CALL, SWITCH_FN)) { LOG("combo master: switch call does not match"); bad++; }
     if (!call_ok(WIN_CALL, WIN_FN)) { LOG("combo master: combo window call does not match"); bad++; }
     if (memcmp(g_base + S_cm_detail.rva, S_cm_detail.bytes, S_cm_detail.len)) { LOG("combo master: detail site does not match"); bad++; }
+    const Steal *rows[3] = { &S_cm_row_a, &S_cm_row_b, &S_cm_row_init };
+    for (int i = 0; i < 3; i++) if (memcmp(g_base + rows[i]->rva, rows[i]->bytes, rows[i]->len)) { LOG("combo master: row site %x does not match", rows[i]->rva); bad++; }
     if (*(u32*)(g_base + 0x3f3661) != 0xc00000f7u) { LOG("combo master: detail test does not match"); bad++; }
     return bad == 0;
 }
@@ -162,6 +178,9 @@ void combomaster_apply(void) {
     for (int i = 0; i < 2; i++) hook_call(HELP_CALLS[i], HELP_FN, help_hook, "ability help (Combo Master)");
     hook_call(SWITCH_CALL, SWITCH_FN, switch_hook, "ability switch (Combo Master)");
     hook_ctx(&S_cm_detail, detail_hook, "ability detail (Combo Master)");
+    g_rows_moved = hook_ctx(&S_cm_row_a, row_a, "ability rows a (Combo Master)")
+                 & hook_ctx(&S_cm_row_b, row_b, "ability rows b (Combo Master)")
+                 & hook_ctx(&S_cm_row_init, row_init, "ability rows setup (Combo Master)");
     hook_call(WIN_CALL, WIN_FN, window_hook, "combo window (Combo Master)");
     NAME_PTR(CM_ID) = c_name;
     LOG("combo master: in the Abilities menu, %s", c_on ? "on" : "off");
@@ -172,5 +191,8 @@ int *test_cm_on(void) { return &c_on; }
 u32 *test_cm_rec(void) { return &g_rec; }
 const char *test_cm_help(void) { return c_help; }
 void test_cm_append(u8 *menu) { cm_append(menu); }
+float *test_cm_rowpos(void) { return g_rowpos[0]; }
+u64 test_cm_row(int which, u8 *menu, int row) { Ctx c; memset(&c, 0, sizeof c); c.rdi = (u64)menu; c.rbx = (u64)menu + row * 8; c.rsi = (u64)menu;
+    u64 r = which == 0 ? row_a(&c) : which == 1 ? row_b(&c) : row_init(&c); return which == 2 ? c.rdi : (r ? c.rdx : 0); }
 u64 test_cm_detail(u8 *menu) { Ctx c; memset(&c, 0, sizeof c); c.rbx = (u64)menu; return detail_hook(&c); }
 #endif

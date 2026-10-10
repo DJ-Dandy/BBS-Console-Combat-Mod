@@ -1261,10 +1261,17 @@ static void t_tex(void) {
 /* Combo Master: a new ability (id 0x1c3) in the camp Abilities menu, and what it does to the normal combo's window */
 extern int *test_cm_on(void); extern u32 *test_cm_rec(void); extern const char *test_cm_help(void);
 extern void test_cm_append(u8 *menu); extern u64 test_cm_detail(u8 *menu);
+extern float *test_cm_rowpos(void); extern u64 test_cm_row(int which, u8 *menu, int row);
 static u8 *call_target(u32 site) { u8 *p = RVA(site); return p + 5 + *(s32*)(p + 1); }
 static void t_cm(void) {
     /* the list as 3f1ce0 builds it: the 30 abilities in three groups by category (Prize 0x10, Stats 0x0b, Support
-       0x11); EXP Zero only on Critical.  Room for exactly 30 entries (menu+0x288 is the rows' positions). */
+       0x11); EXP Zero only on Critical.  The game has room for 30 (menu+0x288 is the rows' positions); with those
+       moved out the list holds 31 */
+    CHECK(*(u8*)RVA(0x3f2644) == 0xe9 && *(u8*)RVA(0x3f2657) == 0xe9 && *(u8*)RVA(0x3f2f60) == 0xe9, "the three row-position sites are hooked");
+    { u8 *m = calloc(1, 0x500);
+      CHECK(test_cm_row(0, m, 0) == (u64)test_cm_rowpos() && test_cm_row(0, m, 6) == (u64)(test_cm_rowpos() + 12)
+            && test_cm_row(1, m, 3) == (u64)(test_cm_rowpos() + 6) && test_cm_row(2, m, 0) == (u64)test_cm_rowpos(),
+            "row positions go to the mod's buffer (row k at +8k), not to menu+0x288"); }
     static u32 recs[30]; const u8 cats[3] = { 0x10, 0x0b, 0x11 };
     u8 *menu = NULL; s16 n = 0;
     for (int critical = 1; critical >= 0; critical--) {
@@ -1275,14 +1282,15 @@ static void t_cm(void) {
                 if (id == 0x1c9 && !critical) continue;
                 u8 *e = menu + 0xa8 + n * 0x10; *(u32**)e = &recs[i]; *(u16*)(e + 8) = id; e[0xa] = g; e[0xb] = k++ == 0; e[0xe] = G(u8, 0x811083 + id * 0x1e); n++; } }
         *(s16*)(menu + 0x94) = n;
-        memset(menu + 0x288, 0x5a, 8);                  /* the first row position, which must stay untouched */
+        memset(menu + 0x298, 0x5a, 8);                  /* past a 31st entry: must stay untouched */
         test_cm_append(menu);
         if (critical) {
             CHECK(n == 30 && G(u8, 0x814901 + 0x1c9 * 0x18) == 0x11 && G(u8, 0x811083 + 0x1c9 * 0x1e) == 1, "Critical: 30 abilities with EXP Zero (%d)", n);
-            CHECK(*(s16*)(menu + 0x94) == 30 && menu[0x288] == 0x5a, "Critical: the list is full, nothing added past it (%d)", *(s16*)(menu + 0x94));
+            CHECK(*(s16*)(menu + 0x94) == 31 && *(u16*)(menu + 0x290) == 0x1c3 && menu[0x298] == 0x5a, "Critical: Combo Master is the 31st, nothing written past it (%d)", *(s16*)(menu + 0x94));
+            test_cm_append(menu); CHECK(*(s16*)(menu + 0x94) == 31, "never a 32nd");
         } else {
             CHECK(n == 29, "other difficulties: 29 abilities (%d)", n);
-            CHECK(*(s16*)(menu + 0x94) == 30 && menu[0x288] == 0x5a, "Combo Master takes the 30th place, nothing written past it");
+            CHECK(*(s16*)(menu + 0x94) == 30 && menu[0x298] == 0x5a, "Combo Master takes the 30th place");
         }
     }
     u8 *e = menu + 0xa8 + n * 0x10;
@@ -1291,6 +1299,9 @@ static void t_cm(void) {
     u32 r = **(u32**)e;
     CHECK(*test_cm_on() == 0 && (r & 0xc000) == 0xc000 && (r >> 6 & 7) == 1 && (r >> 9 & 1) == 0 && (r & 7) == 0, "its u32: known (no NEW badge), learned, off at first (%08x)", r);
     test_cm_append(menu); CHECK(*(s16*)(menu + 0x94) == 30, "not added twice");
+    /* a 32-entry list (not the game's, just more than room) gets nothing */
+    { u8 *m = calloc(1, 0x500); *(s16*)(m + 0x94) = 31; *(u16*)(m + 0xa8 + 30 * 0x10 + 8) = 0x1d0; test_cm_append(m);
+      CHECK(*(s16*)(m + 0x94) == 31, "a full list (31) gets nothing more"); }
     /* the hooked calls */
     u8 *site = RVA(0x3f37f0); CHECK(site[0] == 0xe8 && call_target(0x3f37f0) != RVA(0x41d2e0), "the switch call is hooked");
     void (MSABI *sw)(u16, u8, s8) = (void*)call_target(0x3f37f0);

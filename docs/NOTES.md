@@ -797,6 +797,12 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
     The first build counted room for 41 and put a 31st entry there: the row positions overwrote it and moving the
     cursor onto it crashed (3f26ae, reading its u32).  EXP Zero is listed only on Critical (`140360150` = the
     difficulty byte 150fa0881 == 3), so the list has 29 entries elsewhere and 30 on Critical - no room there.
+    The fix that followed makes room: the row positions (7 x 2 floats) are only ever reached through three
+    `lea reg,[menu+0x288]` - 3f2f60 (setup loop, 1a6880 fills them), 3f2644 / 3f2657 (cursor, passed to 4283c0 /
+    428800) - and nothing else in the menu (3f0000..3f4000), its base class (42a000..42c000) or those helpers touches
+    +0x288..+0x2bf; the 0x1e constants there are the constructor's first count and 3f1ce0's loop over the 30 ids.
+    hook_ctx at the three sites points them at a buffer of the mod's, so the list holds 31 (up to 33 would fit).
+    The append only goes past 30 when all three hooks are in.
     count at +0x94; +0 u32*, +8 id, +0xa group (0 Prize 0x10, 1 Stats 0x0b, 2 Support 0x11),
     +0xb first of group, +0xc/+0xf level, +0xd learned, +0xe possible.  After each call the entry is appended to
     Support with its own u32 (0xc000 known | one copy learned | on bit), +0xd = +0xe = 1: one pip, like EXP Zero.

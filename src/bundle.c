@@ -19,9 +19,11 @@ static int c_combo = 1, c_camera = 1, c_revenge = 1;
 /* [Camera]: on top of the KH2 Camera files.  Distance scales how far the camera sits (eye pulled towards the
    aim point, so the viewing angle and FOV stay); the pitch limits are the player camera's hard clamp on how
    far the right stick can tilt it: Low (camera below, looking up) and High (camera above, looking down).
-   BBS clamps to [-30, +45] degrees (set in FUN_14022d790).  KH2's field camera has no manual tilt at all: it only
+   BBS clamps to [-30, +45] degrees (set in FUN_14022d790).  Tilting down, the camera reaches the floor at about
+   -10 deg (its map ray pulls it in to the hit point, FUN_14022b110), so the low limit decides how far it can keep
+   sliding in along the ground towards the character: -60 by default here.  KH2's field camera has no manual tilt at all: it only
    reads the pad for yaw (3 deg/frame, 1403a9250) and the height follows automatically. */
-static float c_cam_dist = 0.9f, c_pitch_min = -30.0f, c_pitch_max = 45.0f;
+static float c_cam_dist = 0.9f, c_pitch_min = -60.0f, c_pitch_max = 45.0f;
 static u32 cam_scaled_crc[64];
 #define DEG2RAD 0.01745329252f              /* the same constant KH2 uses (0x3c8efa35) */
 #define PITCH_MIN_IMM 0x22dae9              /* FUN_14022d790: mov [rdi+344h], 0bf060a92h (-30 deg), imm at +6 */

@@ -777,3 +777,6 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   (+0x680) is only ever set by scripted/auto code, never from the stick.  The +/-45 deg found at gm::CAMERA+0xe2c is
   ACTION_NMGUN (a minigame camera's yaw limit, pitch +/-15 there).  So KH2 has no wider tilt range to copy;
   `PitchLow`/`PitchHigh` stay at the game's values unless changed.
+- Tilting down on flat ground the camera's map ray (look point -> eye, FUN_1401ffa90 in FUN_14022b110) hits the
+  floor at about -10 deg and the eye is pulled in to the hit point; past that, more tilt slides the camera along the
+  floor towards the character.  The -30 limit stopped that ~1.2 m out, so PitchLow defaults to -60 (imm 0xbf860a92).

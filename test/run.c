@@ -1312,7 +1312,7 @@ static void t_bundle(void) {
         }
         dd[5] ^= 0x55; u32 odd = test_crc(dd, len); slot(r); CHECK(test_crc(dd, len) == odd, "unknown content is left alone");
     }
-    CHECK(G(u32, 0x22dae9) == 0xbf060a92u && G(u32, 0x22daf6) == 0x3f490fdbu, "camera pitch limits at the game's -30/+45 by default");
+    CHECK(G(u32, 0x22dae9) == 0xbf860a92u && G(u32, 0x22daf6) == 0x3f490fdbu, "camera pitch limits -60/+45 by default");
     /* other .bin of the same size but another name, and other types, are not touched */
     u8 buf[112]; memset(buf, 7, sizeof buf);
     u8 *r = calloc(1, 0x90); r[0x10] = 2; strcpy((char*)r + 0x38, "PCamV001.bin"); *(u8**)(r + 0x70) = buf; *(u64*)(r + 0x80) = 112;

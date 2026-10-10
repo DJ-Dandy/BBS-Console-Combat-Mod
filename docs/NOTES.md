@@ -851,3 +851,24 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   little quicker than the game.  [CommandSpeed] for a single command still wins.  The ticks-based locks after the
   release (Mega Flare 120) are not animation and do not change.
 - Test: t_speed (Cure factor and release time, every big spell 1.05, ordinary -aga / Aero / Stop spells not).
+
+## Revenge Value v2.2: the gauge is not cleared (KH2), and armour windows hold
+- Reported: Aqua's final Vanitas still easy to combo - he breaks out, but comes back right next to you and you are
+  straight back in for another full string.  Asked to look at it for all bosses, not him alone.
+- KH2 (kh2.exe): the gauge at +0xd48 is written only by the constructors (1403db840 / 1403db930: 0, cap +0xd4c
+  100.0), the adds (1403db730 / 1403dbb90) and the drain (1403db440 / 1403dbbf0, clamped at 0).  The "revenge"
+  event (14040e337: flag +0x6c8 bit 4, gauge >= cap -> 1403cac50 with "revenge") does not touch it.  So after a
+  revenge the gauge stays at the cap and drains at 1.0 / frame (6 hits a second) while the boss is out of
+  hit-stun - during its own revenge action.  Going straight back in, the next revenge comes after a few hits.
+- v2.1 cleared the gauge after every break-out (done) and whenever the boss recovered from hit-stun
+  (OnReturnDamage).  The second made every combo string start from 0: only one unbroken string of ~10 hits could
+  ever bring a break-out, and after one the player always had a full gauge's worth of free hits.
+- Now: done() keeps the value and sets idle to the grace (drain from the next frame); OnReturnDamage does the
+  same.  Per boss `clear = true` keeps the old clearing - No Heart only, whose slow gauge (grace 120, drain 0.03)
+  stands in for his own burst timer.
+- The armour window after a forced revenge (iframes) is held every frame: the boss's own states switch "no damage
+  reaction" off in their OnEndState (Vanitas' Cartwheel / WarpAttack2 ...), which cut it short before.
+- Effect in the loop test (80 hits, one every 35 frames): 11 break-outs for every boss instead of 6 - 9.
+- Vanitas (b63ex00) found in the investigation: his break-out at the limit is Warp2 - vanish, reappear 0.5 m behind
+  the player (WarpToTargetBack scales the target's direction by -0.5), one slash (WarpAttack2), back to Idling.
+  Unchanged for now; with the gauge kept he breaks out again after a few hits when you go straight back in.

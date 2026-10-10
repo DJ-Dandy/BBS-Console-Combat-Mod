@@ -245,8 +245,16 @@ local function attach(ent, name, handle)
 
   -- a break-out happened.  fired = it was our forced revenge: arm the
   -- armour window (KH2 revenge actions cannot be stuffed), if configured.
+  -- KH2 never clears the gauge (only the boss's constructor and the drain
+  -- bottoming out write 0 to +0xd48): it stays where it is and drains while
+  -- the boss acts on its own, out of hit-stun.  So the drain starts at once,
+  -- and a player who goes straight back in finds a boss that breaks out
+  -- again after a few hits instead of a fresh full gauge.
   local function done(fired)
-    st.rv, st.idle, st.firing, st.fireT = 0, 0, false, 0
+    local grace = c.grace
+    if grace == nil then grace = RV.grace end
+    st.idle, st.firing, st.fireT = grace, false, 0
+    if c.clear then st.rv, st.idle = 0, 0 end     -- per boss: its own timer, not KH2's gauge
     st.count = st.count + 1
     if fired then st.fcount = st.fcount + 1 end
     rollLimit()
@@ -349,7 +357,13 @@ local function attach(ent, name, handle)
 
   if ord ~= nil or c.recover ~= nil then
     rawset(ent, "OnReturnDamage", function(self, a, b, c2, d)
-      st.rv, st.idle, st.firing, st.fireT = 0, 0, false, 0
+      -- out of hit-stun: KH2 starts draining here, it does not clear the gauge
+      -- (clearing it made every combo string start from nothing, so only one
+      -- unbroken string of ~10 hits could ever bring a break-out)
+      local grace = c.grace
+      if grace == nil then grace = RV.grace end
+      if c.clear then st.rv, st.idle, st.firing, st.fireT = 0, 0, false, 0
+      elseif st.idle < grace then st.idle = grace end
       local r
       if ord ~= nil then r = ord(self, a, b, c2, d) end
       -- KH2 bosses come back at you after a combo; the config's recover
@@ -363,13 +377,15 @@ local function attach(ent, name, handle)
     local dt = Entity.GetFrameRate(myh(self))
     if type(dt) ~= "number" or dt <= 0 or dt > 6 then dt = 1 end
     st.t = st.t + dt
-    -- armour window after a forced revenge
+    -- armour window after a forced revenge.  Held every frame: the boss's own
+    -- states switch "no damage reaction" off when they end (a counter's
+    -- OnEndState), which used to cut the window short.
     if st.armor > 0 then
       st.armor = st.armor - dt
-      if st.armor <= 0 then
-        st.armor = 0
-        if type(Enemy.EnableNoDamageReaction) == "function" then Enemy.EnableNoDamageReaction(myh(self), 0) end
+      if type(Enemy.EnableNoDamageReaction) == "function" then
+        Enemy.EnableNoDamageReaction(myh(self), st.armor > 0 and 1 or 0)
       end
+      if st.armor <= 0 then st.armor = 0 end
     end
     -- hits the engine hides from the callbacks (some juggle reactions)
     -- still cost HP: count them so those combos cannot run forever.  Only

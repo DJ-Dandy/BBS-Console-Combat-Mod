@@ -22,6 +22,8 @@
 --   iframes  armour frames (60/s) after a forced break-out, so it cannot be stuffed (default none)
 --   recover  function(self) run after the boss recovers from hit-stun: KH2 bosses come
 --            back at you, several BBS scripts just stand up into idling
+--   clear    true: the gauge is cleared after a break-out and when the boss recovers (default:
+--            KH2's rule - it is kept and drains while the boss acts)
 --   haste    < 1 shortens the idle times the script reads through entity methods
 --            (hasteFns, default GetIdlingChangeTime); timers baked in as constants stay
 -- Large bosses are deliberately absent: they keep their vanilla behaviour.
@@ -445,6 +447,7 @@ cfg.b40ex00 = {
 cfg.b85vs00 = {
   limit = 14,
   grace = 120, drain = 0.03,    -- vanilla forgets a string of hits over ~10 s
+  clear = true,                 -- his gauge stands in for that timer: a burst starts it over
   armored = true,
   quiet = "real",
   fire = "real",

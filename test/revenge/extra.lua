@@ -46,12 +46,25 @@ do
   for i = 1, 8 do r = hit(h) end
   check(r == nil and st.rv == 8 and e:GetState() == "Idling", "Xehanort: 8 hits land, he stays in the combo")
   r = hit(h)
-  check(r == "before" and e:GetState() == "Warp" and st.rv == 0 and e.defenseTimer > 0, "9th hit: quick warp (state " .. e:GetState() .. "), hit negated, value cleared")
+  check(r == "before" and e:GetState() == "Warp" and st.rv == 9 and e.defenseTimer > 0, "9th hit: quick warp (state " .. e:GetState() .. "), hit negated, value kept (KH2)")
+  local grace = BBS_REVENGE.grace
+  check(st.idle >= grace, "... and it drains from now on, while he acts")
   check(hit(h) == nil and e:GetState() == "Warp", "while he is warping nothing more is triggered")
   pcall(e.GotoState, e, "Idling"); st.rv = 0
   for i = 1, 2 do hit(h, ATK_KIND_DMG_SMALL, COMMAND_CATEGORY_FINISH) end
   check(st.rv == 6 and e:GetState() == "Idling", "finishers count 3 each (value " .. st.rv .. ")")
-  check(hit(h, ATK_KIND_DMG_SMALL, COMMAND_CATEGORY_FINISH) == "before" and st.rv == 0, "... break-out at the third")
+  check(hit(h, ATK_KIND_DMG_SMALL, COMMAND_CATEGORY_FINISH) == "before" and st.rv == 9, "... break-out at the third")
+  -- KH2: the gauge is not cleared by a break-out; it drains while he acts, so going straight
+  -- back in brings the next break-out sooner than the first
+  pcall(e.GotoState, e, "Idling")
+  for i = 1, 20 do e:OnUpdate() end              -- a third of a second of his own action
+  check(st.rv > 6.9 and st.rv < 7.1, "a third of a second later: drained at KH2's pace, 9 -> " .. st.rv)
+  local n = 0
+  repeat n = n + 1 r = hit(h) until r == "before" or n > 12
+  check(r == "before" and n <= 3, "straight back in: the next break-out after " .. n .. " hits, not 9")
+  pcall(e.GotoState, e, "Idling")
+  for i = 1, 200 do e:OnUpdate() end
+  check(st.rv == 0, "left alone long enough it drains to nothing (" .. st.rv .. ")")
 end
 -- Zack
 M.script("b40he00")
@@ -64,13 +77,16 @@ do
   check(hit(h) == nil and st.firing == true, "limit reached during a move he cannot leave: no counter yet")
   pcall(e.GotoState, e, "Move")
   local r = hit(h)
-  check(r == "before" and st.rv == 0, "next hit: his counter, now per hit (" .. tostring(r) .. ", into " .. e:GetState() .. ")")
+  check(r == "before" and st.rv >= 8, "next hit: his counter, now per hit (" .. tostring(r) .. ", into " .. e:GetState() .. "), value kept (" .. st.rv .. ")")
   check(st.armor > 0, "the counter got its armour window")
   for i = 1, 60 do e:OnUpdate() end
   check(st.armor == 0, "... and the armour ran out")
+  st.rv = 0
   for i = 1, 4 do hit(h) end
   EntityManager:CallFunctionNoArg("OnReturnDamage", h)
-  check(st.rv == 0, "recovering from hit-stun clears the value")
+  check(st.rv == 4 and st.idle >= BBS_REVENGE.grace, "recovering from hit-stun does not clear the value, it starts the drain")
+  e:OnUpdate()
+  check(st.rv < 4 and st.rv > 3.8, "... at once (" .. st.rv .. ")")
 end
 -- Hades
 M.script("b01he00")
@@ -80,12 +96,12 @@ do
   for i = 1, 5 do hit(h) end
   check(st.rv == 5, "Hades: 5 hits")
   M.num["Effect.IsAlive"] = true
-  check(hit(h) == "before" and st.rv == 0, "burning red: the hit is ignored and the value clears")
+  check(hit(h) == "before" and st.rv == 5, "burning red: the hit is ignored, the value stays (KH2)")
   M.num["Effect.IsAlive"] = false
   local r
   local n0 = st.count
   for i = 1, 9 do r = hit(h) end
-  check((r == "damage" or r == "before") and st.rv == 0 and st.count > n0, "9 hits: counter (" .. tostring(r) .. ", into " .. e:GetState() .. ")")
+  check((r == "damage" or r == "before") and st.count > n0, "9 hits: counter (" .. tostring(r) .. ", into " .. e:GetState() .. ")")
 end
 -- Peter Pan (added in v2: vanilla has no break-out at all)
 M.script("b20pp00")
@@ -98,7 +114,7 @@ do
   for i = 1, 9 do r = hit(h) end
   check(r == nil and st.rv == 9, "Peter Pan: 9 hits land, no vanilla escape fires")
   r = hit(h)
-  check(r == "before" and st.rv == 0 and e:GetState() == "Attack3", "10th hit: his own attack as the revenge (" .. tostring(e:GetState()) .. ")")
+  check(r == "before" and st.rv == 10 and e:GetState() == "Attack3", "10th hit: his own attack as the revenge (" .. tostring(e:GetState()) .. "), value kept")
   check(st.armor > 0, "the revenge has its armour window")
   for i = 1, 70 do e:OnUpdate() end
   check(st.armor == 0, "... which runs out")

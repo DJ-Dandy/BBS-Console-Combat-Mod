@@ -198,13 +198,20 @@ static int list_index_of(u8 *cmd, u8 *P, int kind) {
 static int deck_sealed(u8 *cmd) { return (*(u32*)(cmd + 0x60) & 0x800000) != 0; }      /* the game's own "commands sealed" */
 static int link_open(u8 *cmd) { return (*(u32*)(cmd + 0x60) & 0x10000000) != 0; }
 static int link_active(u8 *cmd) { return (*(u32*)(cmd + 0x64) & 0x80) != 0; }
+/* A prompt that stays on the attack button: the counter-attacks after a guard (Counter Rush, Payback Raid ...:
+   command type 3, category 6), which come off the attack button in KH2 too.  The battle reaction commands share
+   category 6 but are type 4 (Last Dance, Dual Limit, Turnover ...): those are KH2's reaction commands and go to
+   triangle like Talk or Open.  (They stayed on the attack button at first, and a prompt that stays up after its
+   move - Dual Limit with Mickey - then kept the attack button for itself for seconds, the Attack row unchanged.) */
+#define CMD_TYPE(id) G(u8, 0x814900 + (u32)(id) * 0x18)
+static int stays_on_attack(u16 id) { return CMD_CAT(id) == 6 && CMD_TYPE(id) != 4; }
 /* A context prompt is up (cmd+0x60 bit 0x40000; its plate, type 5, at +0x298) and it is one that triangle answers:
-   everything but the counter prompts (command category 6), which stay on the attack button. */
+   everything but the guard counters above. */
 static int react_prompt(u8 *cmd) {
     if (!c_react || !(*(u32*)(cmd + 0x60) & 0x40000)) return 0;
     u8 *P = *(u8**)(cmd + 0x298);
     u16 *k = P ? *(u16**)(P + 0x58) : NULL;
-    return !(k && CMD_CAT(k[0]) == 6);
+    return !(k && stays_on_attack(k[0]));
 }
 int menu_react_prompt(u8 *cmd) { return c_menu && cmd && react_prompt(cmd); }
 /* the confirm button belongs to the menu (not to the game's own tests inside the command update): off Attack, unless
@@ -716,7 +723,7 @@ static void MSABI plate_update_hook(u8 *P) {
            x 65, 130, 195); here it always sits at the same place above the gauge window */
         L2D_SetPos(h, c_prompt_x, context_y(cmd));
         /* its button picture (text of node 0x5a; the layout's is f564, the confirm button): the one that answers it */
-        if (c_react) { u16 *k = *(u16**)(P + 0x58); L2D_SetNodeText(h, 0x5a, k && CMD_CAT(k[0]) == 6 ? "\xf5\x64" : "\xf5\x67"); }
+        if (c_react) { u16 *k = *(u16**)(P + 0x58); L2D_SetNodeText(h, 0x5a, k && stays_on_attack(k[0]) ? "\xf5\x64" : "\xf5\x67"); }
     } else if (type == 1 || type == 3 || type == 4) {
         /* the red Attack plate and what the game stacks beside it (style attack plates, the finisher plate): kept
            alive but not drawn; the menu's own Attack entry carries the current attack's name, and style.c offers

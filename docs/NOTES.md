@@ -266,8 +266,13 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
   node 0x5a on sequence 0x19d, whose first text is the button picture, f564 in the layout) is answered in the
   command update by the confirm test `140272860` at 236b97; while it is up only that test, the action commands
   (232df0) and the deck input (233a00) run - the Attack part is skipped.
-* The call is replaced: for every prompt but the counter prompts (command category 6) the answer is the triangle
-  test `140272c20`.  The plate's picture is set to f567 (f564 for counters) after each plate update.
+* The call is replaced: for every prompt but the guard counters the answer is the triangle test `140272c20`.  The
+  plate's picture is set to f567 (f564 for counters) after each plate update.  Guard counters = command category 6
+  and type 3 (Counter Rush .. Aerial Recovery, 0x113..0x11a): they come off the attack button in KH2 too.  The battle
+  reaction commands are category 6 as well but type 4 (0x138..0x146: Last Dance, Dual Limit, Turnover ...): KH2's
+  reaction commands, so triangle.  At first all of category 6 stayed on the attack button; reported: after Dual
+  Limit with Mickey (Aqua's story) the attack button did nothing for seconds - its prompt stayed up, it owned the
+  confirm button, the game skips the Attack part while a prompt is up, and the menu's Attack row did not change.
 * The attack button then: off Attack it is the menu's as usual (the "swallow" rule no longer stands back for such
   a prompt); on Attack, menu_input does what the skipped Attack part would [236d9e..236e8e]: the COMMAND of the
   attack plate of the current style level to `cmd+0x80` and `+0x1c8`, `pl+0x570 = dt`, under the same conditions

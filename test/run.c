@@ -2261,6 +2261,18 @@ static void t_menu(void) {
         press(PAD_DOWN); CHECK(*cur == 1, "the menu moves with a prompt up");
         CHECK(press(PAD_X) == 0 && *st == 1 && *(u64*)(cmd + 0x80) == 0, "and its entries open with the attack button (the game does not see it)");
         press(PAD_LEFT); press(PAD_UP); CHECK(*st == 0 && *cur == 0, "back on Attack");
+        /* the battle reaction commands (type 4, category 6: Dual Limit with Mickey ...) are reaction commands: triangle */
+        CHECK(G(u8, 0x814900 + 0x142 * 0x18) == 4 && G(u8, 0x814900 + 0x142 * 0x18 + 1) == 6, "Dual Limit: a reaction command, category 6");
+        pc = 0x142; CHECK(menu_react_prompt(cmd), "Dual Limit's prompt is answered with triangle");
+        BTN(PAD_X); CHECK(test_prompt_pad(pd) == 0, "... not with the attack button");
+        BTN(PAD_TRI); CHECK(test_prompt_pad(pd) != 0, "... triangle does");
+        press(PAD_X); CHECK(*(u64*)(cmd + 0x80) == ac, "with it up (still or again) the attack button attacks");
+        *(u64*)(cmd + 0x80) = 0;
+        { static const u16 rc[] = { 0x138, 0x139, 0x13a, 0x13b, 0x13c, 0x13d, 0x13e, 0x13f, 0x140, 0x141, 0x142, 0x144, 0x145, 0x146 };
+          for (unsigned i = 0; i < sizeof rc / sizeof *rc; i++) { pc = rc[i]; CHECK(menu_react_prompt(cmd), "reaction %x on triangle", rc[i]); } }
+        /* the counter-attacks after a guard (type 3) stay on the attack button */
+        CHECK(G(u8, 0x814900 + 0x113 * 0x18) == 3 && G(u8, 0x814900 + 0x113 * 0x18 + 1) == 6, "Counter Rush: a counter, category 6");
+        counter = 0x113;
         pc = (u64)counter;
         CHECK(!menu_react_prompt(cmd), "a counter prompt is not one of those");
         BTN(PAD_TRI); CHECK(test_prompt_pad(pd) == 0, "triangle does not answer a counter");

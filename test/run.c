@@ -1174,7 +1174,7 @@ static void t_speed(void) {
     u8 *sp = patk + 151 * 0x28; sp[0x14] = 20; sp[0x0d] = 34; sp[0x0c] = 32;      /* Ventus' Cure */
     *(u8**)(p + 0x5b8) = sp; *(u16*)(p + 0x304) = 0x11; *(s16*)(p + 0x310) = 6; *(u16*)(p + 0x312) = 0x92; *(u16*)(p + 0x34c) = 0x92; *(u32*)(p + 0x5e0) = 2;
     float k = test_speed_wanted(p);
-    CHECK(k > 2.21f && k < 2.23f, "Cure wind-up: x%.2f (release at %.2f s instead of 0.67)", k, 20 / 30.0f / k);
+    CHECK(k > 1.66f && k < 1.67f && fabsf(20 / 30.0f / k - 0.40f) < 0.005f, "Cure wind-up: x%.2f (release at %.2f s instead of 0.67)", k, 20 / 30.0f / k);
     sp[0x14] = 10; *(u16*)(p + 0x312) = 0x83; CHECK(test_speed_wanted(p) == 1.0f, "Fire (release 0.33 s, KH2 0.37): untouched");
     sp[0x14] = 13; k = test_speed_wanted(p); CHECK(k > 1.17f && k < 1.19f, "Terra's Fire: x%.2f", k);
     *(u16*)(p + 0x312) = 0x8e; k = test_speed_wanted(p); CHECK(k > 1.43f && k < 1.45f, "Thunder: x%.2f", k);
@@ -1197,13 +1197,19 @@ static void t_speed(void) {
     { extern float *test_cmd_speed(void); float *cs = test_cmd_speed();
       for (int i = 0; i < 0x240; i++) CHECK(cs[i] == 0.0f, "nothing listed by default (%x)", i);
       *(u16*)(p + 0x304) = 0x11; *(s16*)(p + 0x310) = 3; *(u32*)(p + 0x5e0) = 2;
-      *(u16*)(p + 0x312) = 0xac; CHECK(test_speed_wanted(p) == 1.15f, "Mega Flare, not listed: Actions (x%.2f)", test_speed_wanted(p));
-      cs[0xac] = 1.05f; CHECK(test_speed_wanted(p) == 1.05f, "listed at 1.05: x%.2f", test_speed_wanted(p));
-      *(s16*)(p + 0x310) = 4; CHECK(test_speed_wanted(p) == 1.05f, "its recovery too");
+      *(u16*)(p + 0x312) = 0xac; CHECK(test_speed_wanted(p) == 1.05f, "Mega Flare, not listed: BigSpells (x%.2f)", test_speed_wanted(p));
+      *(s16*)(p + 0x310) = 4; CHECK(test_speed_wanted(p) == 1.05f, "... its recovery too"); *(s16*)(p + 0x310) = 3;
+      { static const u16 big[] = { 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0x88, 0x8d };
+        for (unsigned i = 0; i < sizeof big / sizeof *big; i++) { *(u16*)(p + 0x312) = big[i]; CHECK(test_speed_wanted(p) == 1.05f, "big spell %x: x1.05", big[i]); }
+        static const u16 small[] = { 0x85, 0x8c, 0x90, 0xa4, 0x9b, 0xa5, 0xb1, 0xba };
+        for (unsigned i = 0; i < sizeof small / sizeof *small; i++) { *(u16*)(p + 0x312) = small[i]; CHECK(test_speed_wanted(p) != 1.05f, "not a big spell %x: x%.2f", small[i], test_speed_wanted(p)); }
+        *(u16*)(p + 0x312) = 0xac; }
+      cs[0xac] = 1.25f; CHECK(test_speed_wanted(p) == 1.25f, "listed at 1.25 (the list wins over BigSpells): x%.2f", test_speed_wanted(p));
+      *(s16*)(p + 0x310) = 4; CHECK(test_speed_wanted(p) == 1.25f, "its recovery too");
       *(u16*)(p + 0x312) = 0xa2; CHECK(test_speed_wanted(p) == 1.15f, "Aero, not listed: still Actions");
       *(s16*)(p + 0x310) = 3; *(u16*)(p + 0x312) = 0x8e; float k0 = test_speed_wanted(p);
       cs[0x8e] = 1.0f; CHECK(k0 > 1.4f && test_speed_wanted(p) == 1.0f, "Thunder listed at 1: its KH2 timing (x%.2f) gives way to the game's own speed", k0);
-      *(u32*)(p + 0x5e0) = 0; *(u16*)(p + 0x312) = 0xac; CHECK(test_speed_wanted(p) != 1.05f, "no command running (category 0): the list is not used");
+      *(u32*)(p + 0x5e0) = 0; *(u16*)(p + 0x312) = 0xac; CHECK(test_speed_wanted(p) != 1.25f && test_speed_wanted(p) != 1.05f, "no command running (category 0): neither the list nor BigSpells is used");
       *(u16*)(p + 0x304) = 0x10; *(s16*)(p + 0x310) = 5; *(u32*)(p + 0x5e0) = 1; *(u16*)(p + 0x312) = 1;
       CHECK(test_speed_wanted(p) == 1.15f, "the Attack combo: Actions"); cs[1] = 1.3f; CHECK(test_speed_wanted(p) == 1.3f, "Attack listed: x1.3");
       *(u16*)(p + 0x304) = 0x15; *(u32*)(p + 0x5e0) = 4; *(u16*)(p + 0x312) = 0xfb;
@@ -1213,7 +1219,7 @@ static void t_speed(void) {
       /* applied and taken back */
       *(u16*)(p + 0x304) = 0; *(u32*)(p + 0x5e0) = 0; test_speed_frame(p); *(float*)(p + 0x1a8) = 1.0f; *(float*)(wp + 0x1a8) = 1.0f; test_speed_frame(p);
       *(u16*)(p + 0x304) = 0x11; *(s16*)(p + 0x310) = 3; *(u32*)(p + 0x5e0) = 2; *(u16*)(p + 0x312) = 0xac; test_speed_frame(p);
-      CHECK(*(float*)(p + 0x1a8) == 1.05f && *(float*)(wp + 0x1a8) == 1.05f, "during Mega Flare: x%.2f, weapon too", *(float*)(p + 0x1a8));
+      CHECK(*(float*)(p + 0x1a8) == 1.25f && *(float*)(wp + 0x1a8) == 1.25f, "during Mega Flare: x%.2f, weapon too", *(float*)(p + 0x1a8));
       *(u16*)(p + 0x304) = 1; *(u32*)(p + 0x5e0) = 0; test_speed_frame(p);
       CHECK(*(float*)(p + 0x1a8) == 1.0f && *(float*)(wp + 0x1a8) == 1.0f, "after it: the game's speed");
       *(u16*)(p + 0x304) = 0x11; *(u32*)(p + 0x5e0) = 2; *(float*)(p + 0x1a8) = 2.0f; test_speed_frame(p);

@@ -834,3 +834,15 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 - Test: `t_cm` (append on a list built like 3f1ce0 from the exe's tables, the switch / description / detail hooks,
   the name through the real names file, the window through the game's 21c140 at frames 3 / 8 / 26, real hit and deck
   attack untouched).  Not seen in the game by me: the menu itself (the list builder needs the save and deck).
+
+## Cure and the big spells a little slower (speed.c; `[Speed] CureRelease`, `BigSpells`)
+- Asked for: Cure and the bigger spells felt too quick; slow them a little, Cure still much snappier than vanilla.
+- Cure family (Cure, Cura, Curaga, Esuna): CureRelease 0.30 (KH2) -> 0.40 s.  t1 20 / 18 / 22 frames (Ventus / Aqua /
+  Terra) gave wind-up factors 2.22 / 2.00 / 2.44; now 1.67 / 1.50 / 1.83.  Vanilla release 0.67 / 0.60 / 0.73 s, so
+  still 35-45 % sooner.  The lock after the release stays the game's 40 ticks.
+- Big spells (no KH2 counterpart, played at Actions 1.15 before): 0xa6..0xb0 (Faith, Deep Freeze, Glacier, Ice
+  Barrage, Firaga Burst, Raging Storm, Mega Flare, Quake, Tornado, Meteor, Transcendence) and 0x88 / 0x8d (Triple
+  Firaga / Triple Blizzaga) play at BigSpells = 1.05 from start to end, about 9 % longer than before and still a
+  little quicker than the game.  [CommandSpeed] for a single command still wins.  The ticks-based locks after the
+  release (Mega Flare 120) are not animation and do not change.
+- Test: t_speed (Cure factor and release time, every big spell 1.05, ordinary -aga / Aero / Stop spells not).

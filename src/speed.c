@@ -30,7 +30,9 @@
       0.27 / 0.60; Thunder 0.30 / 0.70; Cure goes off at 0.30.  BBS: Fire 0.33-0.43, Blizzard 0.33-0.43, Thunder
       0.33-0.50, Cure 0.60-0.73, and every spell is locked for 40 ticks (0.67 s) after it goes off.  The wind-up
       is played faster so that the release frame (PAtk t1) comes at KH2's time, never slower than the original,
-      and the lock after the release gets KH2's length per family.
+      and the lock after the release gets KH2's length per family.  Cure goes off at 0.40 s here, not KH2's 0.30
+      (asked for: 0.30 made its wind-up 2-2.4 times the game's speed and felt too quick).  The big spells (Mega
+      Flare, Meteor, Raging Storm ..., [Speed] BigSpells) play at 1.05 instead of Actions.
    6. Air hops (KH2's air combo, [Speed] AirHop).  BBS holds the player up in an air combo by taking gravity away:
       every aerial hit starts with vy = 0, no sinking at all before frMoveEnd, 16 % gravity after it, and the next
       hit starts again from vy = 0.  KH2 gives each air hit an upward speed instead (Sora: first hit 8, then 6, the
@@ -73,7 +75,14 @@ static float c_actions = 1.15f;         /* animation speed of attacks, commands,
 static float c_margin = 3.0f;           /* frames of follow-through after the last hit window */
 static float c_airlock = 6.0f;          /* ticks without buttons after an action that ended in the air (game: 30) */
 /* KH2's release times in seconds (0 = leave the spell alone) and ticks from release to "free" (game: 40) */
-static float c_rel_fire = 0.37f, c_rel_blizzard = 0.27f, c_rel_thunder = 0.30f, c_rel_cure = 0.30f;
+static float c_rel_fire = 0.37f, c_rel_blizzard = 0.27f, c_rel_thunder = 0.30f, c_rel_cure = 0.40f;
+/* the big spells, which have no KH2 counterpart and play at Actions otherwise: a little slower than that */
+static float c_big = 1.05f;
+static int big_spell(u16 id) {
+    return (id >= 0xa6 && id <= 0xb0)               /* Faith, Deep Freeze, Glacier, Ice Barrage, Firaga Burst, Raging Storm,
+                                                       Mega Flare, Quake, Tornado, Meteor, Transcendence */
+        || id == 0x88 || id == 0x8d;                /* Triple Firaga, Triple Blizzaga */
+}
 static float c_free_fire = 38.0f, c_free_blizzard = 20.0f, c_free_thunder = 24.0f;
 static float c_cast_max = 2.5f;
 static int   c_hop = 1, c_airlog = 0;
@@ -336,6 +345,7 @@ static float *g_lunge_div;              /* divisor of the lunge speed, 60 / fact
 static float wanted(u8 *pl) {
     float o = cmd_override(pl);
     if (o > 0.0f) return o;
+    if (c_big > 0.0f && *(u32*)(pl + 0x5e0) && big_spell(*(u16*)(pl + 0x312))) return c_big;
     switch (*(u16*)(pl + 0x304)) {
     case 0x10: case 0x12: case 0x13: return c_actions;
     case 0x14: return *(u32*)(pl + 0x5e0) == 7 ? c_actions : 1.0f;
@@ -457,6 +467,9 @@ int speed_check(void) {
     c_rel_thunder = ini_f("ThunderRelease", c_rel_thunder); c_rel_cure = ini_f("CureRelease", c_rel_cure);
     c_free_fire = ini_f("FireFree", c_free_fire); c_free_blizzard = ini_f("BlizzardFree", c_free_blizzard);
     c_free_thunder = ini_f("ThunderFree", c_free_thunder);
+    c_big = ini_f("BigSpells", c_big);
+    if (c_big != 0.0f && c_big < 0.5f) c_big = 0.5f;
+    if (c_big > 2.0f) c_big = 2.0f;
     c_jump_hang = (int)ini_f("JumpHang", (float)c_jump_hang);
     c_hop = (int)ini_f("AirHop", (float)c_hop);
     c_reach = (int)ini_f("AirReach", (float)c_reach);
@@ -518,8 +531,8 @@ void speed_apply(void) {
         g_lunge_div = near_alloc(4);
         if (g_lunge_div) { *g_lunge_div = 60.0f; patch_riprel(0x21cf56, 0, 0x6ec5a4, g_lunge_div, "lunge speed"); }
     }
-    LOG("speed: actions x%.2f, walk-out %d, air %d (lock %.0f), release fire %.2f blizzard %.2f thunder %.2f cure %.2f",
-        c_actions, c_walk, c_air, c_airlock, c_rel_fire, c_rel_blizzard, c_rel_thunder, c_rel_cure);
+    LOG("speed: actions x%.2f, walk-out %d, air %d (lock %.0f), release fire %.2f blizzard %.2f thunder %.2f cure %.2f, big spells x%.2f",
+        c_actions, c_walk, c_air, c_airlock, c_rel_fire, c_rel_blizzard, c_rel_thunder, c_rel_cure, c_big);
 }
 
 #ifndef _WIN32      /* offline test access */

@@ -780,23 +780,3 @@ field), cast_timing.md (KH2 vs BBS cast data; scripts in /home/claude/bbs/speed)
 - Tilting down on flat ground the camera's map ray (look point -> eye, FUN_1401ffa90 in FUN_14022b110) hits the
   floor at about -10 deg and the eye is pulled in to the hit point; past that, more tilt slides the camera along the
   floor towards the character.  The -30 limit stopped that ~1.2 m out, so PitchLow defaults to -60 (imm 0xbf860a92).
-
-## Combo Master (mp.c combo_window_hook; `[Combat] ComboMaster`, `ComboMasterName`, `ComboMasterHelp`)
-- Asked for: KH's Combo Master - the Attack combo goes on when its hits miss.
-- Why a whiffed combo stops: the next hit can only be asked for in the window `14021c140` opens.  For the Attack
-  category (pl+0x5e0 == 1) it needs pl+0x320 bit 0x20 "connected" (or cmd+0x60 & 0x1000), which only the weapon hit
-  handler [293d9d / 293dee] or a fired bullet [229021] sets.  Normal combo (pl+0x310 sub-state 5): window opens at
-  once with 0x318 |= 0x40, valid up to frComboEnable (PAtk +0xc); a queued command starts at frChangeEnable (+0xd).
-- The bit is not simply set: the normal combo's movement call (228f39: `shr ecx,5; not; and esi`) passes "not
-  connected", i.e. a hit ends the forward lunge.  So the one window call of the normal combo (22902e, rcx = pl,
-  xmm1 = frame) is hooked: with the ability, sub-state 5, category 1, not already connected and frame >= frMark End
-  (+0x1d, where the swing lands; melee records have frTrigger 0), the bit is set for that call only and cleared
-  after (21c140 writes 0x320 back from its own copy when it queues).  Other readers of the bit (2674d0 / 2687d0,
-  magic states) never see it.
-- Side effect, same as after a real hit: the open window also takes guard / dodge / other commands, so a whiffed
-  normal-combo hit can be cancelled into them (vanilla: nothing at all until the animation ends).
-- Ability: Attack Haste (0x1cf, slot 12), which here only duplicated MP Haste; with ComboMaster=1 it adds nothing
-  to the MP charge.  Name "Combo Master" fits in place (12 bytes); description 0x32020c (126 bytes of room).
-  ComboMaster=0 restores Attack Haste = MP Haste.
-- Test: `t_combo` (the game's 21c140 through the hooked call, with and without the ability, frames 3 / 8 / 26,
-  real hit untouched, deck attack untouched); texts and charge in `t_haste`.  Not seen in the game by me.

@@ -51,9 +51,6 @@ static float c_berserk_pct = 5.0f;     /* Reload Boost ("Berserker"): percent mo
 static int   c_berserk_rename = 1;
 static char  c_berserk_name[48], c_berserk_help[256];
 static int   c_berserk_name_set, c_berserk_help_set;
-static int   c_combo_master = 1;       /* Attack Haste is Combo Master: the Attack combo goes on when its hits miss */
-static char  c_cm_name[48], c_cm_help[256];
-static int   c_cm_name_set, c_cm_help_set;
 static int   c_cursor_advance = 0;     /* 1 = cursor moves to the next command after a use (vanilla) */
 static int   c_ether = 1;              /* Ether-type items restore MP */
 static int   c_tiered = 1;             /* magic costs spread out by tier (see base_cost) */
@@ -139,11 +136,6 @@ static void load_ini(void) {
         char pc[16]; snprintf(pc, sizeof pc, "%g", c_berserk_pct);
         snprintf(c_berserk_help, sizeof c_berserk_help, "Increases the damage you deal by %s%% while MP is\nrecharging.", pc);
     }
-    c_combo_master = (int)ini_f("Combat", "ComboMaster", (float)c_combo_master);
-    c_cm_name_set = ini_s("Combat", "ComboMasterName", c_cm_name, sizeof c_cm_name);
-    c_cm_help_set = ini_s("Combat", "ComboMasterHelp", c_cm_help, sizeof c_cm_help);
-    if (!c_cm_name_set) snprintf(c_cm_name, sizeof c_cm_name, "Combo Master");
-    if (!c_cm_help_set) snprintf(c_cm_help, sizeof c_cm_help, "Lets you keep your Attack combo going even when your\nattacks miss.");
     c_cursor_advance = (int)ini_f("MP", "CursorAdvance", (float)c_cursor_advance);
     c_ether = (int)ini_f("MP", "EtherRestoresMP", (float)c_ether);
     c_save_seconds = ini_f("MP", "SavePointSeconds", c_save_seconds);
@@ -716,38 +708,12 @@ static u32 MSABI damage_hook(u8 *atk, u8 *hit) {
     r += (u32)add;
     return r > 0x7fff ? 0x7fff : r;         /* kept as a signed 16-bit number by the caller */
 }
-/* ---------------- Combo Master ----------------
-   KH's Combo Master: the Attack combo carries on when its hits miss.  In BBS the next hit of the normal combo
-   can only be asked for in the window 14021c140 opens, and for the Attack category that window needs pl+0x320
-   bit 0x20, "the attack has connected", which only the weapon's hit handler sets [293d9d] (or a bullet,
-   [229021]).  A combo that whiffs has no window at all, so it ends.
-   The same bit also stops the attack's forward lunge (the movement call at 228f39 takes "not connected"), so it
-   is not simply set: for the one window call of the normal combo (sub-state 5, at 22902e) the attack counts as
-   connected from the end of its homing (PAtk frMark End, +0x1d: where the swing lands - melee attacks have no
-   trigger frame) and the bit is put back afterwards.  The next hit still starts no earlier than the game's
-   frChangeEnable (+0xd), as after a real hit.  Attack Haste (0x1cf), which in this mod only did what MP Haste
-   does, is the ability. */
-#define AB_COMBO_MASTER AB_ATTACK_HASTE
-#define WIN_CALL 0x22902eu
-#define WIN_FN   0x21c140u
-static u64 MSABI combo_window_hook(u8 *pl, float frame) {
-    u32 *flags = (u32*)(pl + 0x320);
-    int lend = 0;
-    if (c_combo_master && !(*flags & 0x20) && *(int*)(pl + 0x5e0) == 1 && *(u16*)(pl + 0x310) == 5) {
-        u8 *rec = *(u8**)(pl + 0x5b8);
-        if (rec && frame >= (float)rec[0x1d] && FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_COMBO_MASTER)) lend = 1;
-    }
-    if (lend) *flags |= 0x20;
-    u64 r = FN(u64, WIN_FN, u8*, float)(pl, frame);
-    if (lend) *flags &= ~0x20u;
-    return r;
-}
 #define MSG_NAMES 0xfa0000u
 #define MSG_ABILITY_HELP 0x32003du
 static float charge_speed(u8 *pl) {
     float s = 1.0f;
     if (pl) s += c_haste_bonus * (float)FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_MAGIC_HASTE)
-               + (c_combo_master ? 0.0f : c_atk_haste_bonus * (float)FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_ATTACK_HASTE));
+               + c_atk_haste_bonus * (float)FN(u8, HAS_ABILITY, u8*, u16)(pl, AB_ATTACK_HASTE);
     return s < 0.05f ? 0.05f : s;
 }
 static char *ctd_text(u8 *self, u32 id) {
@@ -773,9 +739,7 @@ static void haste_texts(u8 *self) {
         { AB_MAGIC_HASTE,  "Magic Haste",  "Shortens the reload time for all magic commands",
           c_haste_rename && c_haste_bonus > 0, c_haste_name_set, c_haste_help_set, c_haste_name, c_haste_help[0] },
         { AB_ATTACK_HASTE, "Attack Haste", "Shortens the reload time for all attack commands",
-          c_combo_master ? 1 : c_haste_rename && c_atk_haste_bonus > 0,
-          c_combo_master ? c_cm_name_set : c_haste_name_set, c_combo_master ? c_cm_help_set : c_haste_help_set,
-          c_combo_master ? c_cm_name : c_haste_name, c_combo_master ? c_cm_help : c_haste_help[1] },
+          c_haste_rename && c_atk_haste_bonus > 0, c_haste_name_set, c_haste_help_set, c_haste_name, c_haste_help[1] },
         { AB_RELOAD_BOOST, "Reload Boost", "Shortens the reload time for all commands installed",
           c_berserk_rename && c_berserk_pct > 0, c_berserk_name_set, c_berserk_help_set, c_berserk_name, c_berserk_help } };
     u32 first = *(u32*)(self + 0xb0);
@@ -859,9 +823,8 @@ int mod_install(void) {
     if (!call_ok(0x206a6e, 0x1ce550)) { LOG("call site 206a6e does not match"); bad++; }
     if ((c_desc_cost || c_ether) && !call_ok(DESC_CALL, MSG_FIND)) { LOG("description site does not match"); bad++; }
     if (c_floor && !call_ok(FLOOR_CALL, HAS_ABILITY)) { LOG("damage floor site does not match"); bad++; }
-    if ((c_haste_rename || c_berserk_rename || c_combo_master) && G(u64, VT_CTD_READY) != (u64)(g_base + FN_CTD_READY)) { LOG("message file vtable does not match"); bad++; }
+    if ((c_haste_rename || c_berserk_rename) && G(u64, VT_CTD_READY) != (u64)(g_base + FN_CTD_READY)) { LOG("message file vtable does not match"); bad++; }
     if (c_berserk_pct > 0 && !call_ok(DMG_CALL, DMG_FN)) { LOG("damage site does not match"); bad++; }
-    if (c_combo_master && !call_ok(WIN_CALL, WIN_FN)) { LOG("combo window site does not match"); bad++; }
     if (!bundle_check()) bad++;
     if (!menu_check()) bad++;
     if (!tex_check()) bad++;
@@ -878,8 +841,7 @@ int mod_install(void) {
         LOG("combat: EXP Zero's minimum damage applies without the ability %s", c_floor >= 2 ? "on every difficulty" : "on Critical");
     }
     if (c_berserk_pct > 0) hook_call(DMG_CALL, DMG_FN, damage_hook, "damage (Berserker)");
-    if (c_combo_master) hook_call(WIN_CALL, WIN_FN, combo_window_hook, "combo window (Combo Master)");
-    if (c_haste_rename || c_berserk_rename || c_combo_master) {
+    if (c_haste_rename || c_berserk_rename) {
         u64 old = (u64)(g_base + FN_CTD_READY), f = (u64)ctd_ready_hook;
         o_ctd_ready = (void*)old;
         patch_bytes(VT_CTD_READY, (u8*)&old, (u8*)&f, 8, "message file ready");
@@ -958,8 +920,6 @@ float *test_haste_bonus(int atk) { return atk ? &c_atk_haste_bonus : &c_haste_bo
 const char *test_haste_help(int atk) { return c_haste_help[atk ? 1 : 0]; }
 const char *test_berserk_help(void) { return c_berserk_help; }
 float *test_berserk_pct(void) { return &c_berserk_pct; }
-int *test_combo_master(void) { return &c_combo_master; }
-const char *test_cm_help(void) { return c_cm_help; }
 u32 test_damage(u8 *atk, u8 *hit) { return damage_hook(atk, hit); }
 void test_gauge_update(u8 *g) { gauge_update_hook(g); }
 u8 *test_use(u8 *P) { return use_hook(P); }

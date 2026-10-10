@@ -120,10 +120,22 @@ player_command.md (command deck, plates, input, styles, D-Link).
     saw (1.0 each).  A break-out can arm cfg.iframes frames of EnableNoDamageReaction (Peter Pan 24, Zack /
     Hades / Hook / Maleficent 18) so the revenge cannot be stuffed - KH2 revenge actions behave so.
   - Config keys: `counter`, `armored`, `fired`, `quiet = "real"`, and new in v2: `grace` / `drain` (per-boss
-    gauge decay; No Heart 60 / 0.05 for his vanilla 10 s memory), `vary`, `iframes`, `recover` (run after
+    gauge decay; No Heart 120 / 0.03 for his vanilla 10 s memory), `vary`, `iframes`, `recover` (run after
     OnReturnDamage: Peter Pan goes to BeforeAttackIdling - his approach-then-attack - instead of idling),
     `haste` (scales idle times read through entity methods such as GetIdlingChangeTime; timers baked into a
     script as constants are out of reach).  `decay` (v1 hard clear) was replaced by grace / drain.
+  - v2.1 (2026-10-09, after the first in-game report: Aqua's final Vanitas could still be comboed forever).
+    The v2 build read every time constant as 30ths of a second; Entity.GetFrameRate is the entity dt in
+    60ths [1402b8570 -> entity+0x20], so the gauge waited only 0.25 s and drained 12 a second - more than a
+    real combo (a hit every 0.3 .. 0.9 s, +1 each) could build.  No boss could ever reach its limit in play;
+    the offline test missed it by hitting every 3 frames.  Recalibrated: grace 60, drain 0.1 (KH2's 6 a
+    second), magic window 90, watchdog 12, armour 40-48, No Heart 120 / 0.03; the loop test now hits every
+    35 frames.  The HP watch is gated to hit strings (a counted hit within 60 frames, or a second hidden
+    drop within 30) so poison / burn ticks cannot build revenge.  And every remaining dice-driven boss got a
+    `counter` built from its own moves, so the watchdog guarantee now covers all of them: Vanitas (all,
+    Cartwheel), Remnant (DarkSplicer2 / WarpAttack2), Eraqus (Guard + Kagerou), Armor (Guard), Braig
+    (Escape), Mysterious Figure (WarpMove_Counter), Experiment 221 (Flee string), the wielders and
+    Terra-Xehanort (EvasionAction; his own-AI form has no such state and stays covered by pre()).
   - Build needs Lua 5.1 in the game's bytecode format: github.com/lua/lua tag v5.1.1 with LUA_NUMBER float
     (luaconf.h: number type, "%.7g" / "%f", strtof), the string length dumped and loaded as unsigned int
     (ldump.c DumpString, lundump.c LoadString, header byte 4), and lua_dump stripping when LUA_STRIP is set.

@@ -16,10 +16,10 @@
 --   armored  true: the boss never flinches, so its OnDamage result is not a break-out
 --   fired    function(self) -> true once a break-out that starts from the boss's own
 --            update (not from a hit) is under way
---   grace    frames after the last hit before the gauge starts to drain (default RV.grace)
+--   grace    frames (60/s) after the last hit before the gauge starts to drain (default RV.grace)
 --   drain    gauge drained per frame once draining (default RV.drain; KH2's pace)
 --   vary     the limit is re-rolled +- this after each revenge (default RV.vary)
---   iframes  armour frames after a forced break-out, so it cannot be stuffed (default none)
+--   iframes  armour frames (60/s) after a forced break-out, so it cannot be stuffed (default none)
 --   recover  function(self) run after the boss recovers from hit-stun: KH2 bosses come
 --            back at you, several BBS scripts just stand up into idling
 --   haste    < 1 shortens the idle times the script reads through entity methods
@@ -36,9 +36,32 @@ local function dmgCountPre(self, firing)
   end
 end
 
+-- Break-outs for the bosses whose own escapes live in dice or in OnDamage:
+-- each is the boss's own move set, usable per hit and from the watchdog.
+local function vanitasCounter(self)
+  if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" or self.stack == nil then return 0 end
+  local s = self:GetState()
+  if s == "Dead" or s == "Appear" or s == "Cartwheel" then return 0 end
+  self.stack:push("Idling")
+  self:GotoState("Cartwheel")
+  if type(self.dmgCount) == "number" then self.dmgCount = 0 end
+  return 1
+end
+local function wielderCounter(self)
+  if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" or self.stack == nil then return 0 end
+  if type(self.GetGrandEvasionRate) ~= "function" then return 0 end     -- not the shared wielder script
+  local s = self:GetState()
+  if s == "EvasionAction" or s == "Dead" or s == "Appear" then return 0 end
+  self.stack:push("BattleIdling")
+  self.stack:push("EvasionAction")
+  self:GotoState(self.stack:pop(1))
+  if type(self.DamageCnt) == "number" then self.DamageCnt = 0 end
+  return 1
+end
+
 -- Vanitas (story fights)
 -- vanilla: 15% cartwheel on every hit + growing chance of a warp counter.
-local vanitas = { limit = 10, fire = 0.5, pre = dmgCountPre }
+local vanitas = { limit = 10, fire = 0.5, pre = dmgCountPre, counter = vanitasCounter }
 cfg.b10ex00 = vanitas
 cfg.b10ex01 = vanitas
 cfg.b10ex02 = vanitas
@@ -46,6 +69,7 @@ cfg.b10ex02 = vanitas
 cfg.b63ex00 = {
   limit = 10,
   pre = dmgCountPre,
+  counter = vanitasCounter,
   fire = function(self)
     local d = Entity.CalcDistanceSq(self.myHandle, self.targetHandle)
     if type(d) == "number" and d > 25 then return 0 end
@@ -54,7 +78,7 @@ cfg.b63ex00 = {
 }
 
 -- Vanitas (Ventus's final fight): growing chance of Dark Splicer per hit.
-cfg.b11ex00 = { limit = 10, pre = dmgCountPre }
+cfg.b11ex00 = { limit = 10, pre = dmgCountPre, counter = vanitasCounter }
 
 -- Vanitas Remnant: growing chance of Dark Splicer / warp attack per hit.
 -- (his answer to shotlocks is unconditional and keeps its own dice)
@@ -63,10 +87,38 @@ cfg.b12ex00 = {
   fireSeq = { 0, "coin" },
   pre = dmgCountPre,
   vanilla = function(self, kind, cat) return cat == COMMAND_CATEGORY_SHOOTLOCK end,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" or self.stack == nil then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" or s == "DarkSplicer2" or s == "WarpAttack2" then return 0 end
+    self.stack:push("Idling")
+    if Script.Random() > 0.66 then
+      self.stack:push("DarkSplicer2")
+    else
+      self.stack:push("WarpAttack2")
+    end
+    if type(self.dmgCount) == "number" then self.dmgCount = 0 end
+    self:GotoState(self.stack:pop(1))
+    return 1
+  end,
 }
 
 -- Master Eraqus: guard (+ counter) chance on every hit.
-cfg.b20ex00 = { limit = 12, pre = dmgCountPre }
+cfg.b20ex00 = {
+  limit = 12,
+  pre = dmgCountPre,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" or self.stack == nil then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" or s == "Guard" or s == "Kagerou" then return 0 end
+    self.stack:push("Wander")
+    self.stack:push("Idling")
+    if Script.Random() < 0.5 then self.stack:push("Kagerou") end
+    self:GotoState("Guard")
+    if type(self.dmgCount) == "number" then self.dmgCount = 0 end
+    return 1
+  end,
+}
 
 -- Armor of the Master: 30% counter per hit in his own style, and only a
 -- 30% chance to flinch at all while he copies Ventus / Terra / Aqua.
@@ -74,17 +126,47 @@ local armor = {
   limit = 9,
   quiet = function(self) if self.style == 2 then return 0.999 end return 0 end,
   fire  = function(self) if self.style == 2 then return 0 end return 0.5 end,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" or self.stack == nil then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" or s == "Guard" then return 0 end
+    if s ~= nil then self.stack:push(s) end
+    self:GotoState("Guard")
+    return 1
+  end,
 }
 cfg.b81vs00 = armor
 
 -- Braig: 30% escape on every hit.
-local braig = { limit = 9 }
+local braig = {
+  limit = 9,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" or self.stack == nil then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" or s == "Escape" or s == "InvertedShoot" or s == "Sniper"
+       or s == "ChargeShoot" or s == "ArutemaShoot" then return 0 end
+    self.stack:clear()
+    self.stack:push("Idling")
+    self:GotoState("Escape")
+    return 1
+  end,
+}
 cfg.b30ex00 = braig
 cfg.b32ex00 = braig
 
 -- Mysterious Figure: guard / warp counter / time-slip rolls on every hit.
 cfg.b01ex00 = {
   limit = 9,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" or self.stack == nil then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "DeadCopy" or s == "Appear" or s == "WarpMove_Counter" or s == "Guard" then return 0 end
+    self.stack:push("BattleIdling")
+    self.stack:push("WarpMove_Counter")
+    if type(self.DamageCnt) == "number" then self.DamageCnt = 0 end
+    self:GotoState(self.stack:pop(1))
+    return 1
+  end,
   -- one roll picks the move: < GuardRate guard, < GuardRate + WarpRate warp counter
   fire = function(self) if RV.coin() == 0 then return 0 end return 0.45 end,
   pre = function(self, firing)
@@ -106,7 +188,7 @@ cfg.b01ex00 = {
 -- guard or evade, then his jump-cut counter - for hits his rolls do not cover.
 cfg.b01pp00 = {
   limit = 10,
-  iframes = 18,
+  iframes = 40,
   counter = function(self)
     if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return 0 end
     local s = self:GetState()
@@ -131,7 +213,7 @@ cfg.b01pp00 = {
 -- own attacks; after any combo he goes straight back on the offensive.
 cfg.b20pp00 = {
   limit = 10,
-  iframes = 24,
+  iframes = 48,
   counter = function(self)
     if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return 0 end
     local s = self:GetState()
@@ -154,7 +236,27 @@ cfg.b20pp00 = {
 }
 
 -- Experiment 221: growing chance to flee per hit.
-cfg.b20ls00 = { limit = 8, fireSeq = { 0, "coin" }, pre = dmgCountPre }
+cfg.b20ls00 = {
+  limit = 8,
+  fireSeq = { 0, "coin" },
+  pre = dmgCountPre,
+  counter = function(self)
+    if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" or self.stack == nil then return 0 end
+    local s = self:GetState()
+    if s == "Dead" or s == "Appear" or s == "Flee" or s == "StartAirMove" or s == "Electroshock" or s == "AirMove" then return 0 end
+    self.stack:clear()
+    self.stack:push("AirMove")
+    self.stack:push("Flee")
+    self.stack:push("StartAirMove")
+    if Script.Random() < 0.5 then
+      self.stack:push("Electroshock")
+      Enemy.EnableNoDamageReaction(self.myHandle, 1)      -- as his own escape does
+    end
+    if type(self.dmgCount) == "number" then self.dmgCount = 0 end
+    self:GotoState(self.stack:pop(1))
+    return 1
+  end,
+}
 
 -- Maleficent: vanilla teleports / staff-attacks after only 3 hits - but only
 -- from OnDamage, which the engine asks on the first hit of a combo alone, so
@@ -163,7 +265,7 @@ cfg.b20ls00 = { limit = 8, fireSeq = { 0, "coin" }, pre = dmgCountPre }
 cfg.b01sb00 = {
   limit = 9,
   fire = "real",
-  iframes = 18,
+  iframes = 40,
   counter = function(self)
     if type(self.GotoState) ~= "function" or type(self.GetState) ~= "function" then return 0 end
     local s = self:GetState()
@@ -209,13 +311,13 @@ local function wielderPost(self, fired)
   end
 end
 -- (a wielder whose script has no dodge chance, e.g. in mid-air, still has none)
-local wielder = { limit = 9, active = wielderActive, pre = wielderPre, post = wielderPost }
+local wielder = { limit = 9, active = wielderActive, pre = wielderPre, post = wielderPost, counter = wielderCounter }
 local wielders = { "b60ex00", "b62ex00", "b68ex00", "b69ex00", "b70ex00", "b72ex00", "b73ex00",
                    "b78ex00", "b79ex00", "b80ex00", "b82ex00", "b83ex00", "b88ex00", "b89ex00" }
 for i = 1, #wielders do
   cfg[wielders[i]] = wielder
 end
-local xehanort = { limit = 8, active = wielderActive, pre = wielderPre, post = wielderPost, fireSeq = { 0.999, "coin" } }
+local xehanort = { limit = 8, active = wielderActive, pre = wielderPre, post = wielderPost, fireSeq = { 0.999, "coin" }, counter = wielderCounter }
 cfg.b50ex00 = xehanort
 cfg.b51ex00 = xehanort
 
@@ -225,6 +327,7 @@ local function ownAI(self) return self.SetDmgCount ~= nil end
 cfg.b52ex00 = {
   limit = 8,
   active = wielderActive,
+  counter = wielderCounter,     -- the shared-AI form only; his own AI has no EvasionAction and is covered by pre()
   fire = function(self) if ownAI(self) then return "real" end return 0 end,
   fireSeq = function(self) if ownAI(self) then return nil end return xehanort.fireSeq end,
   pre = function(self, firing)
@@ -276,7 +379,7 @@ end
 local zack = {
   limit = 9,
   fire = "real",
-  iframes = 18,
+  iframes = 40,
   counter = zackCounter,
   pre = function(self, firing)
     if type(self.damageCnt) == "number" then
@@ -306,7 +409,7 @@ end
 local hades = {
   limit = 9,
   fire = "real",
-  iframes = 18,
+  iframes = 40,
   counter = hadesCounter,
   pre = function(self, firing)
     if type(self.sameDamageCont) ~= "number" then return end
@@ -341,7 +444,7 @@ cfg.b40ex00 = {
 -- he answers with his burst.  Here the burst comes when the revenge value is reached.
 cfg.b85vs00 = {
   limit = 14,
-  grace = 60, drain = 0.05,     -- vanilla forgets a string of hits over ~10 s
+  grace = 120, drain = 0.03,    -- vanilla forgets a string of hits over ~10 s
   armored = true,
   quiet = "real",
   fire = "real",

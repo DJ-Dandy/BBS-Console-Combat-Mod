@@ -2,9 +2,11 @@
 -- Models the one case that used to loop (read from the game's code at 2d5e30 /
 -- 2d60f0): an unbroken combo, during which the engine calls OnDamageBefore on
 -- every hit but never OnDamage (that one only runs when no damage reaction is
--- under way - extra.lua covers it per boss).  80 such hits, the boss's OnUpdate
--- between them; every boss must break out again and again, with the forced
--- revenge itself firing, and never let a run go unanswered for long.
+-- under way - extra.lua covers it per boss).  80 such hits at a real player's
+-- pace - 35 engine frames (0.6 s) apart, the cadence that exposed the drain
+-- bug - with the boss's OnUpdate between them; every boss must break out
+-- again and again, with the forced revenge itself firing, and never let a
+-- run go unanswered for long.
 package.path = (os.getenv("RV_TEST") or "test/revenge") .. "/?.lua;" .. package.path
 local M = require("emu")
 math.randomseed(20261009)
@@ -88,13 +90,13 @@ for _, row in ipairs(plan) do
               broken = true
               break
             end
-            for k = 1, 3 do pcall(e.OnUpdate, e) end
+            for k = 1, 35 do pcall(e.OnUpdate, e) end
             if st.count > c0 + breaks then
               -- the revenge move: it plays out, the boss is back in neutral after it
               breaks = st.count - c0
               if run > maxrun then maxrun = run end
               run = 0
-              for k = 1, 3 do pcall(e.OnUpdate, e) end
+              for k = 1, 30 do pcall(e.OnUpdate, e) end
               pcall(e.GotoState, e, "Idling")
               st.armor = 0
             else

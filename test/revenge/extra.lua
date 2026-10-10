@@ -21,7 +21,7 @@ do
   for i = 1, 13 do hit(h) end
   check(st.rv == 13 and e.burstTimer > 90000 and e.burstStartFlag == 1, "No Heart: 13 hits, value 13, his own timer held off (" .. tostring(e.burstTimer) .. ")")
   for i = 1, 200 do e:OnUpdate() end
-  check(e:GetState() == "Idling" and st.rv > 5.9 and st.rv < 6.1, "200 frames of update between hits: no burst, value drains at his slow rate (state " .. e:GetState() .. ", value " .. st.rv .. ")")
+  check(e:GetState() == "Idling" and st.rv > 10.5 and st.rv < 10.7, "200 frames of update between hits: no burst, value drains at his slow rate (state " .. e:GetState() .. ", value " .. st.rv .. ")")
   local armed = false
   for i = 1, 20 do hit(h) if st.firing then armed = true break end end
   check(armed and e.burstTimer < 0, "more hits: burst armed at his limit")
@@ -66,7 +66,7 @@ do
   local r = hit(h)
   check(r == "before" and st.rv == 0, "next hit: his counter, now per hit (" .. tostring(r) .. ", into " .. e:GetState() .. ")")
   check(st.armor > 0, "the counter got its armour window")
-  for i = 1, 30 do e:OnUpdate() end
+  for i = 1, 60 do e:OnUpdate() end
   check(st.armor == 0, "... and the armour ran out")
   for i = 1, 4 do hit(h) end
   EntityManager:CallFunctionNoArg("OnReturnDamage", h)
@@ -100,7 +100,7 @@ do
   r = hit(h)
   check(r == "before" and st.rv == 0 and e:GetState() == "Attack3", "10th hit: his own attack as the revenge (" .. tostring(e:GetState()) .. ")")
   check(st.armor > 0, "the revenge has its armour window")
-  for i = 1, 30 do e:OnUpdate() end
+  for i = 1, 70 do e:OnUpdate() end
   check(st.armor == 0, "... which runs out")
   EntityManager:CallFunctionNoArg("OnReturnDamage", h)
   check(e:GetState() == "BeforeAttackIdling", "after a combo he goes back on the offensive (" .. e:GetState() .. ")")
@@ -112,6 +112,16 @@ do
   local n0 = st.count
   for i = 1, 60 do hp = hp - 1 e:OnUpdate() if st.count > n0 then break end end
   check(st.count > n0, "hits invisible to the callbacks: the watchdog forced the revenge (value " .. st.rv .. ")")
+  -- poison / burn: HP loss with no hit string behind it must not build revenge
+  pcall(e.GotoState, e, "Idling")
+  st.rv, st.firing, st.armor = 0, 0 == 1, 0
+  st.seen, st.drop = -1e9, -1e9
+  n0 = st.count
+  for i = 1, 10 do
+    hp = hp - 1
+    for k = 1, 70 do e:OnUpdate() end        -- a tick a little over once a second
+  end
+  check(st.rv == 0 and st.count == n0, "damage over time (ticks over 1 s apart) builds no revenge (value " .. st.rv .. ")")
   M.num["Enemy.GetHp"] = 100
 end
 -- the limit varies after each revenge (KH2 FM re-rolls the cap)

@@ -40,19 +40,26 @@ BBS_REVENGE = RV
 -- Revenge value added per hit.  Scaled to KH2's own attack data
 -- (00battle.bin atkp, "revenge damage", read from the game: a normal
 -- hit is 1.0, finishers ~3, multi-hit spells small amounts per tick).
+-- All times below are in the engine's own frames: Entity.GetFrameRate
+-- advances 60 a second (verified in the game's code - the entity dt it
+-- returns is in 60ths).  The first v2 build read them as 30ths, so the
+-- gauge drained twice as fast as KH2 with half the intended grace and
+-- could never fill at a real combo's pace.
 RV.weight = {
   default   = 1.0,   -- normal combo hits, attack commands
   magic     = 1.5,
   magicCast = 4.0,   -- one cast adds at most this (KH2's heaviest magic)
-  magicWin  = 45,    -- frames (30/s): magic hits this close count as one cast
+  magicWin  = 90,    -- 1.5 s: magic hits this close count as one cast
   finish    = 3.0,   -- combo finishers / finish commands
   shootlock = 0.3,   -- per shotlock hit
   launch    = 0.5,   -- extra for hits that launch / knock away
 }
-RV.grace    = 15     -- frames after the last hit before the gauge drains
-RV.drain    = 0.2    -- per frame once draining (KH2: 6 hit-units a second)
+RV.grace    = 60     -- 1 s after the last hit before the gauge drains: a combo's
+                     -- own gaps (0.3 .. 0.9 s) never drain it, as in KH2, where
+                     -- hit-stun blocks the drain outright
+RV.drain    = 0.1    -- per frame once draining = KH2's 6 hit-units a second
 RV.vary     = 1.0    -- next limit = boss's limit +- up to this, re-rolled per revenge
-RV.watchdog = 6      -- frames at the limit without a break-out before `counter` is forced from the update
+RV.watchdog = 12     -- 0.2 s at the limit without a break-out before `counter` is forced from the update
 RV.iframes  = 0      -- armour frames after a forced break-out (0 = none; per boss: cfg.iframes)
 
 -- ---------------------------------------------------------------------
@@ -181,7 +188,7 @@ local function attach(ent, name, handle)
     return
   end
   st = { rv = 0, idle = 0, firing = false, fireT = 0, armor = 0, count = 0, fcount = 0,
-         t = 0, magT = -1e9, magSum = 0, hp = nil, sawHit = false,
+         t = 0, magT = -1e9, magSum = 0, hp = nil, sawHit = false, seen = -1e9, drop = -1e9,
          limit = c.limit, name = name, cfg = c }
   rawset(ent, "__rv", st)
   RV.ents[name] = st
@@ -303,6 +310,7 @@ local function attach(ent, name, handle)
     if st.rv + v >= st.limit then
       st.rv = st.rv + v
       st.idle = 0
+      st.seen = st.t
       st.firing = true
       return fire(odb, self, kind, cat, attr, x)
     end
@@ -312,6 +320,7 @@ local function attach(ent, name, handle)
     else
       st.rv = st.rv + v            -- the hit lands: build revenge
       st.idle = 0
+      st.seen = st.t
     end
     return r
   end)
@@ -363,13 +372,20 @@ local function attach(ent, name, handle)
       end
     end
     -- hits the engine hides from the callbacks (some juggle reactions)
-    -- still cost HP: count them so those combos cannot run forever
+    -- still cost HP: count them so those combos cannot run forever.  Only
+    -- HP loss inside a hit string counts - within 1 s of a counted hit, or
+    -- a second hidden drop within 0.5 s of the first - so poison and burn
+    -- ticks (spaced wider, with no hits landing) cannot build revenge.
     local hp = Enemy.GetHp(myh(self))
     if type(hp) == "number" then
       if type(st.hp) == "number" and hp < st.hp and not st.sawHit and active(self) then
-        st.rv = st.rv + RV.weight.default
-        st.idle = 0
-        if st.rv >= st.limit then st.firing = true end
+        if st.t - st.seen <= 60 or st.t - st.drop <= 30 then
+          st.rv = st.rv + RV.weight.default
+          st.idle = 0
+          st.seen = st.t
+          if st.rv >= st.limit then st.firing = true end
+        end
+        st.drop = st.t
       end
       st.hp = hp
     end
